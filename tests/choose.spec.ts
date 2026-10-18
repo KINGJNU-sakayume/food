@@ -40,7 +40,7 @@ test("choose a franchise, compare experience and consume a menu wish after eatin
   ).toHaveAttribute("aria-pressed", "true");
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("link", { name: "Collection 컬렉션" })
+    .getByRole("link", { name: "컬렉션", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "첫 식사 기록하기" }),
@@ -70,7 +70,7 @@ test("choose a franchise, compare experience and consume a menu wish after eatin
   ).toHaveAttribute("aria-pressed", "true");
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("link", { name: "Collection 컬렉션" })
+    .getByRole("link", { name: "컬렉션", exact: true })
     .click();
   await expect(page.locator(".menu-tile")).toHaveCount(1);
   expect(errors).toEqual([]);
@@ -310,6 +310,7 @@ test("mobile choose pages and shortcut guidance fit an iPhone viewport", async (
       ),
     ).toBe(true);
   }
+  await page.goto("/#/choose/reels");
   await page.getByRole("button", { name: "아이폰 공유 설정" }).click();
   const d = page.getByRole("dialog");
   await expect(d).toContainText("URL 인코딩");

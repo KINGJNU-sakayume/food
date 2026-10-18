@@ -1,15 +1,11 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { X, ArrowUpRight, Plus } from "lucide-react";
+import { X, Plus } from "lucide-react";
 import type { Archive, Menu, Verdict } from "../types/model";
 import { isFavourite, menuRecords, preference, verdicts } from "../lib/data";
 export const dateLabel = (date: string) =>
-  new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  })
-    .format(new Date(`${date.slice(0, 10)}T12:00:00`))
-    .toUpperCase();
+  `${date.slice(0, 4)}. ${Number(date.slice(5, 7))}. ${Number(date.slice(8, 10))}.`;
+export const shortDate = (date: string) =>
+  `${Number(date.slice(5, 7))}.${date.slice(8, 10)}`;
 export function VerdictLabel({ value }: { value: Verdict }) {
   return (
     <span className={`verdict ${value.toLowerCase()}`}>
@@ -54,7 +50,7 @@ export function Modal({
       }}
     >
       <div className="modal-head">
-        <span className="eyebrow">PALATE / {title}</span>
+        <span />
         <button className="icon-button" aria-label="닫기" onClick={onClose}>
           <X size={22} />
         </button>
@@ -89,23 +85,9 @@ export function MenuCover({
           loading="lazy"
         />
       ) : (
-        <>
-          <div className="cover-top">
-            <span>TASTING NOTES</span>
-            <span>No. {String(index + 1).padStart(2, "0")}</span>
-          </div>
-          <div className="cover-center">
-            <span className="plate-mark" aria-hidden="true">
-              <i />
-            </span>
-            <strong>{menu.name}</strong>
-            <span>{menu.category || "AN EVERYDAY TASTE"}</span>
-          </div>
-          <div className="cover-bottom">
-            <span>A PRIVATE ARCHIVE</span>
-            <span>PALATE</span>
-          </div>
-        </>
+        <div className="cover-center">
+          <strong>{menu.name}</strong>
+        </div>
       )}
     </div>
   );
@@ -130,22 +112,17 @@ export function MenuTile({
         <span>
           {brand?.name || place?.name || menu.category || "나의 메뉴"}
         </span>
-        <span>{rs[0] ? dateLabel(rs[0].eaten_at) : "아직 기록 없음"}</span>
       </div>
       <div className="tile-title">
         <h3>{menu.name}</h3>
-        <ArrowUpRight size={22} />
       </div>
       <div className="tile-bottom">
         {v ? <VerdictLabel value={v} /> : <span>미기록</span>}
         <span>
           {isFavourite(archive, menu.id) && (
-            <span className="frequent-label">자주 찾는 취향 · </span>
+            <span className="frequent-label">자주 · </span>
           )}
-          {rs.length}번의 식사{" "}
-          <span className="muted">
-            / {rs.filter((r) => r.verdict === "LIKE").length}번의 호
-          </span>
+          {rs.length}번
         </span>
       </div>
     </a>
