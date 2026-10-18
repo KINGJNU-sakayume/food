@@ -22,25 +22,33 @@ export function WantButton({
   targetId,
   onSave,
   place = false,
+  compact = false,
+  name,
 }: {
   archive: Archive;
   type: TargetType;
   targetId: string;
   onSave: Commit;
   place?: boolean;
+  compact?: boolean;
+  name?: string;
 }) {
   const active = isWanted(archive, type, targetId),
     label = place ? "가보고 싶다" : "먹고 싶다";
   return (
     <button
       type="button"
-      className={`want-button ${active ? "wanted" : ""}`}
+      className={`want-button ${active ? "wanted" : ""} ${compact ? "compact" : ""}`}
       aria-pressed={active}
-      aria-label={label}
+      aria-label={name ? `${name} ${label}` : label}
       onClick={() => onSave((a) => toggleWish(a, type, targetId), false)}
     >
-      {active ? <Check size={14} /> : <Bookmark size={14} />}
-      <span>{label}</span>
+      {active ? (
+        <Check size={compact ? 20 : 16} />
+      ) : (
+        <Bookmark size={compact ? 20 : 16} />
+      )}
+      {!compact && <span>{label}</span>}
     </button>
   );
 }
@@ -251,8 +259,7 @@ export function ShortcutGuide({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="SAVE FROM YOUR IPHONE" onClose={onClose} wide>
       <div className="shortcut-guide">
-        <span className="eyebrow">SET UP ONCE. SAVE ANYTIME.</span>
-        <h2>공유 메뉴에서, 바로 보관함으로.</h2>
+                <h2>공유 메뉴에서, 바로 보관함으로.</h2>
         <p>
           아이폰 단축어에 아래 동작을 한 번 만들어 두세요. 릴스를 보다가 공유
           시트의 <strong>PALATE에 저장</strong>을 누르면 이 브라우저에서

@@ -131,9 +131,7 @@ export default function ChoosePage({
       {!target && (
         <header className="page-heading choose-heading">
           <div>
-            <div className="eyebrow">CHOOSE YOUR NEXT TASTE</div>
             <h1>오늘은, 무엇을 먹을까.</h1>
-            <p>궁금한 맛과 익숙한 취향 사이에서.</p>
           </div>
           <button className="primary" onClick={() => setAddPlace({})}>
             <Plus size={17} />
@@ -155,13 +153,11 @@ export default function ChoosePage({
               aria-current={view === key ? "page" : undefined}
             >
               {label}
-              {key === "reels" && <small>{archive.saved_links.length}</small>}
+              {key === "reels" && !!archive.saved_links.length && (
+                <small>{archive.saved_links.length}</small>
+              )}
             </a>
           ))}
-          <button className="text-button" onClick={() => setShortcut(true)}>
-            <Smartphone size={15} />
-            <span>아이폰 공유 설정</span>
-          </button>
         </nav>
       )}
       {target ? (
@@ -193,21 +189,32 @@ export default function ChoosePage({
               />
             </label>
             {view === "places" ? (
-              <button
-                className={`want-filter ${wanted ? "active" : ""}`}
-                aria-pressed={wanted}
-                onClick={() => setWanted(!wanted)}
-              >
-                <Bookmark size={14} />
-                가고 싶은 곳과 메뉴
-              </button>
+              <>
+                <button
+                  className={`want-filter ${wanted ? "active" : ""}`}
+                  aria-pressed={wanted}
+                  aria-label="가고 싶은 곳과 메뉴만 보기"
+                  onClick={() => setWanted(!wanted)}
+                >
+                  <Bookmark size={18} />
+                  <span>가고 싶은 곳과 메뉴</span>
+                </button>
+                <button
+                  className="primary tools-add"
+                  aria-label="음식점 추가"
+                  onClick={() => setAddPlace({})}
+                >
+                  <Plus size={18} />
+                  추가
+                </button>
+              </>
             ) : view === "reels" ? (
               <button className="text-button" onClick={() => setPaste(true)}>
                 <Plus size={16} />
                 링크 저장
               </button>
             ) : (
-              <span className="eyebrow">{catalogs.length} BRANDS</span>
+              <span className="section-count">브랜드 {catalogs.length}</span>
             )}
           </div>
           {view === "places" && (
@@ -225,49 +232,41 @@ export default function ChoosePage({
                       ).length;
                     return (
                       <article key={t.type + t.id} className="venue-row">
-                        <span className="venue-letter" aria-hidden="true">
-                          {v.name.slice(0, 1)}
-                        </span>
                         <a
                           className="venue-main"
                           href={`#/choose/${t.type === "BRAND" ? "brand" : "place"}/${t.id}`}
                         >
-                          <span className="eyebrow">
-                            {t.type === "BRAND" ? "BRAND" : "PLACE"}
+                          <span className="venue-letter" aria-hidden="true">
+                            {v.name.slice(0, 1)}
                           </span>
-                          <h2>{v.name}</h2>
-                          <p>
-                            {t.type === "PLACE"
-                              ? ("address" in v ? v.address : "") ||
-                                "주소 미기록"
-                              : "메뉴에서 만나는 나의 취향"}
-                          </p>
-                          <div className="venue-summary">
-                            <span>{menus.length}개의 메뉴</span>
-                            <span>먹어본 메뉴 {tried}</span>
-                            {wishes > 0 && (
-                              <span className="liked-text">
-                                먹고 싶은 메뉴 {wishes}
-                              </span>
-                            )}
-                          </div>
+                          <span className="venue-text">
+                            <h2>{v.name}</h2>
+                            <span className="venue-summary">
+                              {[
+                                t.type === "BRAND" && "브랜드",
+                                `메뉴 ${menus.length}`,
+                                `먹어봄 ${tried}`,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                              {wishes > 0 && (
+                                <span className="liked-text">
+                                  {" "}
+                                  · 먹고 싶은 {wishes}
+                                </span>
+                              )}
+                            </span>
+                          </span>
                         </a>
-                        <div className="venue-row-actions">
-                          <WantButton
-                            archive={archive}
-                            type={t.type}
-                            targetId={t.id}
-                            onSave={onSave}
-                            place
-                          />
-                          <a
-                            href={`#/choose/${t.type === "BRAND" ? "brand" : "place"}/${t.id}`}
-                            className="icon-button"
-                            aria-label={`${v.name} 메뉴 보기`}
-                          >
-                            <ArrowUpRight size={21} />
-                          </a>
-                        </div>
+                        <WantButton
+                          archive={archive}
+                          type={t.type}
+                          targetId={t.id}
+                          onSave={onSave}
+                          place
+                          compact
+                          name={v.name}
+                        />
                       </article>
                     );
                   })}
@@ -286,15 +285,6 @@ export default function ChoosePage({
                   }
                 />
               )}
-              <div className="choose-bottom-actions">
-                <button className="text-button" onClick={() => setAddPlace({})}>
-                  <Search size={16} />
-                  다른 음식점 찾아 저장하기 <ArrowUpRight size={15} />
-                </button>
-                <a href="#/choose/franchises" className="text-button">
-                  프랜차이즈 메뉴 둘러보기 <ArrowUpRight size={15} />
-                </a>
-              </div>
             </>
           )}
           {view === "franchises" && (
@@ -371,7 +361,7 @@ export default function ChoosePage({
                     </button>
                   ))}
                 </div>
-                <span className="eyebrow">{links.length} SAVED LINKS</span>
+                <span className="section-count">링크 {links.length}</span>
               </div>
               {links.length ? (
                 <div className="saved-link-grid">
@@ -383,12 +373,12 @@ export default function ChoosePage({
                       <div className="link-cover">
                         <span className="eyebrow">
                           {sourceOf(l.url) === "INSTAGRAM"
-                            ? "INSTAGRAM REEL"
+                            ? "인스타그램 릴스"
                             : sourceOf(l.url) === "NAVER"
-                              ? "NAVER PLACE"
+                              ? "네이버 플레이스"
                               : sourceOf(l.url) === "BAEMIN"
-                                ? "BAEMIN"
-                                : "SAVED PLACE"}
+                                ? "배민"
+                                : "저장한 장소"}
                         </span>
                         <a
                           href={l.url}
@@ -463,17 +453,12 @@ export default function ChoosePage({
                   description="인스타그램에서 공유하거나 링크를 붙여넣으면 이곳에 남습니다."
                 />
               )}
-              <button className="add-another" onClick={() => setPaste(true)}>
-                <Plus size={20} />
-                <span>발견한 링크를 보관하세요.</span>
-                <ArrowUpRight size={19} />
-              </button>
               <button
                 className="text-button shortcut-entry"
                 onClick={() => setShortcut(true)}
               >
-                <Smartphone size={16} />
-                아이폰 공유 메뉴에서 바로 저장하기 <ArrowUpRight size={14} />
+                <Smartphone size={18} />
+                아이폰 공유 설정
               </button>
             </>
           )}
@@ -629,13 +614,13 @@ function VenueDetail({
   return (
     <>
       <a className="back-link" href="#/choose">
-        <ArrowLeft size={16} />
-        CHOOSE
+        <ArrowLeft size={20} />
+        고르기
       </a>
       <header className="venue-heading">
         <div>
           <span className="eyebrow">
-            {target.type === "BRAND" ? "BRAND MENU" : "PLACE MENU"}
+            {target.type === "BRAND" ? "브랜드" : "음식점"}
           </span>
           <h1>{venue.name}</h1>
           <p>{place?.address || "끌리는 메뉴와, 먹어본 기억을 한눈에."}</p>
@@ -931,7 +916,7 @@ export function ReceiveShare({
   }, [blocked, text]);
   return (
     <div className="receive-page">
-      <span className="eyebrow">SHARED TO PALATE</span>
+      <span className="eyebrow">링크 보관</span>
       <h1>{error ? "링크를 확인해 주세요." : "발견한 맛을 보관하는 중."}</h1>
       <p role={error ? "alert" : "status"}>
         {error || "음식점 이름은 나중에 붙여도 괜찮아요."}

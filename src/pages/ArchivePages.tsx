@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -10,6 +10,8 @@ import {
   Pencil,
   Trash2,
   X,
+  MoreHorizontal,
+  ChevronRight,
 } from "lucide-react";
 import type {
   Archive,
@@ -29,7 +31,7 @@ import {
   updateMenuInfo,
 } from "../lib/data";
 import {
-  dateLabel,
+  shortDate,
   Empty,
   MenuCover,
   MenuTile,
@@ -39,18 +41,10 @@ import { WantButton } from "../components/DiscoveryCommon";
 
 type Add = (menuId?: string) => void;
 const heading = {
-  collection: [
-    "COLLECTION",
-    "먹어온 것들.",
-    "한 번의 식사도, 여러 번의 익숙함도.",
-  ],
-  journal: [
-    "JOURNAL",
-    "한 끼씩, 차곡차곡.",
-    "입맛은 매일 조금씩 다른 이야기를 씁니다.",
-  ],
-  places: ["PLACES", "맛을 만난 장소.", "메뉴가 기억을 남긴 자리."],
-  insights: ["YOUR TASTE", "쌓여가는 취향.", "정답 없이, 오직 나의 기록으로."],
+  collection: "먹어온 것들.",
+  journal: "한 끼씩, 차곡차곡.",
+  places: "맛을 만난 장소.",
+  insights: "쌓여가는 취향.",
 };
 export function PageHeading({
   page,
@@ -59,13 +53,10 @@ export function PageHeading({
   page: keyof typeof heading;
   children?: React.ReactNode;
 }) {
-  const [label, title, description] = heading[page];
   return (
     <header className="page-heading">
       <div>
-        <div className="eyebrow">{label}</div>
-        <h1>{title}</h1>
-        <p>{description}</p>
+        <h1>{heading[page]}</h1>
       </div>
       {children}
     </header>
@@ -141,12 +132,13 @@ function FilterBar({
               className={filters.verdict === v ? "active" : ""}
               onClick={() => update("verdict", v)}
             >
-              {label}
               {v && (
                 <span className={`tab-mark ${v.toLowerCase()}`}>
                   {verdicts[v as Verdict].mark}
                 </span>
               )}
+              {v && " "}
+              {label}
             </button>
           ))}
         </div>
@@ -167,11 +159,13 @@ function FilterBar({
           </label>
           <button
             className={`filter-toggle ${count ? "has-filters" : ""}`}
+            aria-label={count ? `필터 ${count}개 적용됨` : "필터"}
             aria-expanded={open}
             onClick={() => setOpen(!open)}
           >
-            <SlidersHorizontal size={17} />
-            <span>필터{count ? ` ${count}` : ""}</span>
+            <SlidersHorizontal size={19} />
+            <span className="filter-label">필터</span>
+            {!!count && <span className="filter-count">{count}</span>}
           </button>
         </div>
       </div>
@@ -326,27 +320,17 @@ export function Collection({
   );
   return (
     <>
-      <PageHeading page="collection">
-        <div className="archive-stamp">
-          <span>A PRIVATE ARCHIVE</span>
-          <span className="stamp-p">P.</span>
-          <span>OF EVERYDAY TASTE</span>
-        </div>
-      </PageHeading>
+      <PageHeading page="collection" />
       {!archive.menus.some(
         (m) => !m.discovered || menuRecords(archive, m.id).length > 0,
       ) ? (
         <section className="welcome">
-          <div className="welcome-line">
-            <span className="eyebrow">YOUR FIRST PAGE</span>
-            <span>001</span>
-          </div>
           <div className="welcome-content">
             <div>
               <h2>
-                Your taste,
+                기억하는 그대로의
                 <br />
-                <em>as you remember it.</em>
+                <em>나의 취향.</em>
               </h2>
               <p>
                 처음 먹어본 한 접시부터
@@ -367,14 +351,7 @@ export function Collection({
                 )}
             </div>
             <div className="welcome-art" aria-hidden="true">
-              <div className="large-plate">
-                <span>
-                  Every meal
-                  <br />
-                  <em>leaves a trace.</em>
-                </span>
-              </div>
-              <span className="art-caption">A NOTE TO YOUR FUTURE SELF.</span>
+              <div className="large-plate" />
             </div>
           </div>
         </section>
@@ -388,11 +365,8 @@ export function Collection({
             setQuery={setQuery}
           />
           <div className="collection-toolbar">
-            <span className="eyebrow">
-              {String(menus.length).padStart(2, "0")} MENU ITEMS{" "}
-              <span className="muted">
-                / {archive.records.length} EATING RECORDS
-              </span>
+            <span className="toolbar-count">
+              메뉴 {menus.length}개 · 식사 {archive.records.length}번
             </span>
             <div className="sort-controls">
               <select
@@ -437,21 +411,84 @@ export function Collection({
               description="검색어나 필터를 바꿔 보세요."
             />
           )}
-          <button className="add-another" onClick={() => onAdd()}>
-            <Plus size={21} />
-            <span>또 하나의 맛을 기록하세요.</span>
-            <ArrowUpRight size={21} />
-          </button>
         </>
       )}
-      <div className="closing-note">
-        <span>기억하고 싶은 맛만, 솔직하게.</span>
-        <span>NO STARS. JUST YOUR TASTE.</span>
-      </div>
     </>
   );
 }
 
+const contexts = {
+  DINE_IN: "매장",
+  TAKEOUT: "포장",
+  DELIVERY: "배달",
+  HOME: "집",
+  OTHER: "기타",
+};
+const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+function RecordMenu({
+  label,
+  onEdit,
+  onDelete,
+}: {
+  label: string;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false),
+    ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+  return (
+    <div className="record-actions" ref={ref}>
+      <button
+        className="icon-button"
+        aria-label={`${label} 기록 메뉴`}
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <MoreHorizontal size={20} />
+      </button>
+      {open && (
+        <div className="record-menu-popover" role="menu">
+          <button
+            role="menuitem"
+            aria-label={`${label} 기록 수정`}
+            onClick={() => {
+              setOpen(false);
+              onEdit();
+            }}
+          >
+            <Pencil size={16} />
+            수정
+          </button>
+          <button
+            role="menuitem"
+            className="danger"
+            aria-label={`${label} 기록 삭제`}
+            onClick={() => {
+              setOpen(false);
+              onDelete();
+            }}
+          >
+            <Trash2 size={16} />
+            삭제
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 export function RecordRow({
   archive,
   record,
@@ -472,44 +509,33 @@ export function RecordRow({
       .sort((a, b) => a.sort_order - b.sort_order),
     tags = archive.record_tags
       .filter((t) => t.eating_record_id === record.id)
-      .map((t) => archive.tags.find((x) => x.id === t.tag_id));
+      .map((t) => archive.tags.find((x) => x.id === t.tag_id)),
+    date = new Date(`${record.eaten_at.slice(0, 10)}T12:00:00`);
+  const meta = [
+    place?.name || "장소 미기록",
+    record.dining_context && contexts[record.dining_context],
+    record.price_paid !== undefined &&
+      `₩${record.price_paid.toLocaleString("ko-KR")}`,
+  ].filter(Boolean);
   return (
     <article className="record-row">
       <div className="record-date">
         <b>{record.eaten_at.slice(8, 10)}</b>
-        <span>{dateLabel(record.eaten_at).slice(3)}</span>
+        <span>
+          {showMenu
+            ? weekdays[date.getDay()]
+            : `${Number(record.eaten_at.slice(5, 7))}월`}
+        </span>
       </div>
       <div className="record-content">
         {showMenu && (
           <a className="record-menu" href={`#/menu/${menu?.id}`}>
             {menu?.name}
-            <ArrowUpRight size={16} />
           </a>
         )}
-        <div className="record-location">
-          {place?.name || "장소 미기록"}
-          {record.price_paid !== undefined && (
-            <span> · ₩{record.price_paid.toLocaleString("ko-KR")}</span>
-          )}
-          {record.dining_context && (
-            <span>
-              {" "}
-              ·{" "}
-              {
-                {
-                  DINE_IN: "매장에서",
-                  TAKEOUT: "포장",
-                  DELIVERY: "배달",
-                  HOME: "집에서",
-                  OTHER: "기타",
-                }[record.dining_context]
-              }
-            </span>
-          )}
-        </div>
-        <div className="record-verdict">
+        <div className="record-meta">
           <VerdictLabel value={record.verdict} />
-          <span>{reorders[record.reorder_intent]}</span>
+          <span className="record-location"> · {meta.join(" · ")}</span>
         </div>
         {record.short_note && (
           <p className="record-note">{record.short_note}</p>
@@ -520,24 +546,6 @@ export function RecordRow({
             <p>{record.detailed_note}</p>
           </details>
         )}
-        {!!photos.length && (
-          <div className="record-photos">
-            {photos.map((p) => (
-              <a
-                key={p.id}
-                href={p.storage_path}
-                download={`${menu?.name || "palate"}-${record.eaten_at}.webp`}
-                aria-label={`${menu?.name} 사진 내려받기`}
-              >
-                <img
-                  src={p.storage_path}
-                  alt={`${menu?.name} 식사 사진`}
-                  loading="lazy"
-                />
-              </a>
-            ))}
-          </div>
-        )}
         {!!tags.length && (
           <div className="tags">
             {tags.map((t) => (
@@ -546,22 +554,29 @@ export function RecordRow({
           </div>
         )}
       </div>
-      <div className="record-actions">
-        <button
-          className="icon-button"
-          aria-label={`${menu?.name} ${record.eaten_at} 기록 수정`}
-          onClick={() => onEdit(record)}
-        >
-          <Pencil size={16} />
-        </button>
-        <button
-          className="icon-button"
-          aria-label={`${menu?.name} ${record.eaten_at} 기록 삭제`}
-          onClick={() => onDelete(record)}
-        >
-          <Trash2 size={16} />
-        </button>
-      </div>
+      {!!photos.length && (
+        <div className="record-photos">
+          <a
+            href={photos[0].storage_path}
+            download={`${menu?.name || "palate"}-${record.eaten_at}.webp`}
+            aria-label={`${menu?.name} 사진 내려받기`}
+          >
+            <img
+              src={photos[0].storage_path}
+              alt={`${menu?.name} 식사 사진`}
+              loading="lazy"
+            />
+            {photos.length > 1 && (
+              <span className="photo-more">+{photos.length - 1}</span>
+            )}
+          </a>
+        </div>
+      )}
+      <RecordMenu
+        label={`${menu?.name} ${record.eaten_at}`}
+        onEdit={() => onEdit(record)}
+        onDelete={() => onDelete(record)}
+      />
     </article>
   );
 }
@@ -608,12 +623,7 @@ export function Journal({
   const months = [...new Set(records.map((r) => r.eaten_at.slice(0, 7)))];
   return (
     <>
-      <PageHeading page="journal">
-        <button className="text-button" onClick={() => onAdd()}>
-          <Plus size={17} />
-          오늘의 한 끼
-        </button>
-      </PageHeading>
+      <PageHeading page="journal" />
       <FilterBar
         archive={archive}
         filters={filters}
@@ -637,14 +647,10 @@ export function Journal({
             <section key={month}>
               <div className="month-title">
                 <h2>
-                  {new Intl.DateTimeFormat("en-US", {
-                    month: "long",
-                    year: "numeric",
-                  }).format(new Date(`${month}-01T12:00:00`))}
+                  {month.slice(0, 4)}년 {Number(month.slice(5, 7))}월
                 </h2>
-                <span className="eyebrow">
-                  {records.filter((r) => r.eaten_at.startsWith(month)).length}{" "}
-                  ENTRIES
+                <span className="month-count">
+                  {records.filter((r) => r.eaten_at.startsWith(month)).length}끼
                 </span>
               </div>
               {records
@@ -699,8 +705,8 @@ export function MenuDetail({
   return (
     <>
       <a className="back-link" href="#/collection">
-        <ArrowLeft size={16} />
-        COLLECTION
+        <ArrowLeft size={20} />
+        컬렉션
       </a>
       <div className="menu-detail">
         <MenuCover
@@ -710,46 +716,70 @@ export function MenuDetail({
           large
         />
         <div className="menu-intro">
-          <div className="eyebrow">
-            {archive.brands.find((b) => b.id === menu.brand_id)?.name ||
-              "MY MENU"}{" "}
-            / {menu.category || "UNCATEGORIZED"}
+          <div className="detail-kicker">
+            {[
+              archive.brands.find((b) => b.id === menu.brand_id)?.name,
+              menu.category,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "나의 메뉴"}
           </div>
           <h1>{menu.name}</h1>
-          <p className="detail-subtitle">같은 메뉴, 매번 다른 기억.</p>
-          <div className="detail-verdict">
-            {v && <VerdictLabel value={v} />}
-            <span>
-              {rs.filter((r) => r.verdict === "LIKE").length} / {rs.length}{" "}
-              LIKED
-            </span>
-          </div>
-          <div className="detail-stats">
+          <dl className="detail-stats">
             <div>
-              <strong>{rs.length}</strong>
-              <span>TIMES EATEN</span>
+              <dt>먹은 횟수</dt>
+              <dd>{rs.length}번</dd>
             </div>
             <div>
-              <span>FIRST</span>
-              <b>{rs.at(-1) ? dateLabel(rs.at(-1)!.eaten_at) : "—"}</b>
-              <span>LAST</span>
-              <b>{rs[0] ? dateLabel(rs[0].eaten_at) : "—"}</b>
+              <dt>평가</dt>
+              <dd>
+                {v ? (
+                  <>
+                    <span className={`verdict ${v.toLowerCase()}`}>
+                      {verdicts[v].label}{" "}
+                      {rs.filter((r) => r.verdict === v).length}
+                    </span>
+                    {(Object.keys(verdicts) as Verdict[])
+                      .filter((x) => x !== v && rs.some((r) => r.verdict === x))
+                      .map((x) => (
+                        <small key={x}>
+                          {" "}
+                          · {verdicts[x].label}{" "}
+                          {rs.filter((r) => r.verdict === x).length}
+                        </small>
+                      ))}
+                  </>
+                ) : (
+                  "—"
+                )}
+              </dd>
             </div>
+            <div>
+              <dt>마지막</dt>
+              <dd>{rs[0] ? shortDate(rs[0].eaten_at) : "—"}</dd>
+            </div>
+          </dl>
+          <div className="detail-actions">
+            <button className="primary" onClick={() => onAdd(menu.id)}>
+              <Plus size={20} />
+              {rs.length ? "다시 먹은 기록" : "먹은 기록 남기기"}
+            </button>
+            <WantButton
+              archive={archive}
+              type="MENU"
+              targetId={menu.id}
+              onSave={onUpdate}
+              compact
+            />
+            <button
+              className="icon-button outlined"
+              aria-label="메뉴 정보 수정"
+              aria-expanded={edit}
+              onClick={() => setEdit(!edit)}
+            >
+              <Pencil size={18} />
+            </button>
           </div>
-          <button className="primary" onClick={() => onAdd(menu.id)}>
-            <Plus size={18} />
-            {rs.length ? "다시 먹은 기록" : "먹은 기록 남기기"}
-          </button>
-          <WantButton
-            archive={archive}
-            type="MENU"
-            targetId={menu.id}
-            onSave={onUpdate}
-          />
-          <button className="text-button" onClick={() => setEdit(!edit)}>
-            <Pencil size={15} />
-            메뉴 정보 수정
-          </button>
           {edit && (
             <form
               className="menu-edit"
@@ -821,37 +851,12 @@ export function MenuDetail({
       </div>
       <section className="history">
         <div className="section-heading">
-          <h2>
-            Eating history<span>모든 식사의 기록</span>
-          </h2>
-          <span className="eyebrow">{rs.length} ENTRIES</span>
+          <h2>식사 기록</h2>
+          <span className="section-count">
+            {rs.length}건
+            {rs.at(-1) && ` · 처음 ${shortDate(rs.at(-1)!.eaten_at)}`}
+          </span>
         </div>
-        {rs.length > 0 && (
-          <div className="preference-summary">
-            <div>
-              <span className="eyebrow">LIFETIME / 전체 기록</span>
-              <div className="verdict-counts">
-                {(Object.keys(verdicts) as Verdict[]).map((v) => (
-                  <span key={v}>
-                    <VerdictLabel value={v} />
-                    <b>{rs.filter((r) => r.verdict === v).length}</b>
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div>
-              <span className="eyebrow">RECENT / 최근 3회</span>
-              <div className="verdict-counts">
-                {rs.slice(0, 3).map((r) => (
-                  <span key={r.id}>
-                    <VerdictLabel value={r.verdict} />
-                    <small>{r.eaten_at.slice(5).replace("-", ".")}</small>
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
         {rs.length ? (
           rs.map((r) => (
             <RecordRow
@@ -920,17 +925,15 @@ export function Places({
       {selectedId && (brand || place) ? (
         <>
           <a href="#/places" className="back-link">
-            <ArrowLeft size={16} />
-            PLACES
+            <ArrowLeft size={20} />
+            장소
           </a>
           <header className="page-heading">
             <div>
-              <span className="eyebrow">{brand ? "BRAND" : "PLACE"}</span>
               <h1>{brand?.name || place?.name}</h1>
-              <p>{place?.address || "이곳에서 모은 취향들."}</p>
+              {place?.address && <p>{place.address}</p>}
               <div className="place-counts">
-                {menus.length}개의 메뉴 <span> / </span>
-                {records.length}번의 식사
+                메뉴 {menus.length} · {records.length}번 식사
               </div>
             </div>
             <button className="text-button" onClick={() => setEdit(!edit)}>
@@ -1020,9 +1023,7 @@ export function Places({
             </div>
           )}
           <div className="section-heading">
-            <h2>
-              On the menu<span>이곳에서 먹은 메뉴</span>
-            </h2>
+            <h2>이곳에서 먹은 메뉴</h2>
           </div>
           {menus.length ? (
             <div className="menu-grid">
@@ -1057,10 +1058,10 @@ export function Places({
           ) : (
             <>
               <div className="section-heading">
-                <h2>
-                  Brands<span>익숙한 이름들</span>
-                </h2>
-                <span className="eyebrow">{archive.brands.length} BRANDS</span>
+                <h2>브랜드</h2>
+                <span className="section-count">
+                  {archive.brands.length}곳
+                </span>
               </div>
               <div className="brand-list">
                 {archive.brands
@@ -1068,28 +1069,25 @@ export function Places({
                     (b) =>
                       !query || normalize(b.name).includes(normalize(query)),
                   )
-                  .map((b, i) => (
+                  .map((b) => (
                     <a href={`#/places/${b.id}`} key={b.id}>
-                      <span className="brand-number">
-                        {String(i + 1).padStart(2, "0")}
-                      </span>
-                      <strong>{b.name}</strong>
-                      <span>
-                        {
-                          archive.menus.filter((m) => m.brand_id === b.id)
-                            .length
-                        }{" "}
-                        MENU
-                      </span>
-                      <ArrowUpRight size={20} />
+                      <div>
+                        <h3>{b.name}</h3>
+                        <p>
+                          메뉴{" "}
+                          {
+                            archive.menus.filter((m) => m.brand_id === b.id)
+                              .length
+                          }
+                        </p>
+                      </div>
+                      <ChevronRight size={20} />
                     </a>
                   ))}
               </div>
               <div className="section-heading">
-                <h2>
-                  Places<span>기억이 남은 자리</span>
-                </h2>
-                <span className="eyebrow">{list.length} PLACES</span>
+                <h2>장소</h2>
+                <span className="section-count">{list.length}곳</span>
               </div>
               <div className="places-list">
                 {list.map((p) => {
@@ -1099,17 +1097,11 @@ export function Places({
                       <div>
                         <h3>{p.name}</h3>
                         <p>
-                          {p.address ||
-                            archive.brands.find((b) => b.id === p.brand_id)
-                              ?.name ||
-                            "주소 미기록"}
+                          메뉴 {new Set(rs.map((r) => r.menu_id)).size} ·{" "}
+                          {rs.length}번 식사
                         </p>
                       </div>
-                      <span>
-                        {new Set(rs.map((r) => r.menu_id)).size}개의 메뉴{" "}
-                        <small>{rs.length}번의 식사</small>
-                      </span>
-                      <ArrowUpRight size={20} />
+                      <ChevronRight size={20} />
                     </a>
                   );
                 })}
@@ -1158,19 +1150,17 @@ export function Insights({ archive }: { archive: Archive }) {
   ] as string[];
   const statList = (items: typeof sorted, mode: string) => (
     <ol className="insight-list">
-      {items.slice(0, 5).map((x, i) => (
+      {items.slice(0, 5).map((x) => (
         <li key={x.menu.id}>
           <a href={`#/menu/${x.menu.id}`}>
-            <span className="muted">{String(i + 1).padStart(2, "0")}</span>
             <span>{x.menu.name}</span>
             <strong>
               {mode === "repeat"
-                ? `${x.rs.length}회`
+                ? `${x.rs.length}번`
                 : mode === "liked"
                   ? `${Math.round((x.rs.filter((r) => r.verdict === "LIKE").length / x.rs.length) * 100)}%`
                   : `${Math.round((x.rs.filter((r) => r.verdict === "DISLIKE" && r.reorder_intent === "NO").length / x.rs.length) * 100)}%`}
             </strong>
-            <ArrowUpRight size={16} />
           </a>
         </li>
       ))}
@@ -1188,36 +1178,30 @@ export function Insights({ archive }: { archive: Archive }) {
         <>
           <div className="taste-totals">
             {[
-              [archive.records.length, "EATING RECORDS", "번의 식사"],
-              [sorted.length, "MENUS TRIED", "개의 메뉴"],
+              [archive.records.length, "식사"],
+              [sorted.length, "메뉴"],
               [
                 new Set(archive.records.map((r) => r.place_id).filter(Boolean))
                   .size,
-                "PLACES VISITED",
-                "곳의 장소",
+                "장소",
               ],
-            ].map(([n, label, ko]) => (
+            ].map(([n, label]) => (
               <div key={label}>
-                <strong>{n}</strong>
                 <span>{label}</span>
-                <small>{ko}</small>
+                <strong>{n}</strong>
               </div>
             ))}
           </div>
           <div className="insight-columns">
             <section>
               <div className="section-heading">
-                <h2>
-                  On repeat<span>자꾸만 손이 가는 맛</span>
-                </h2>
+                <h2>자주 찾는 맛</h2>
               </div>
               {statList(sorted, "repeat")}
             </section>
             <section>
               <div className="section-heading">
-                <h2>
-                  Always a pleasure<span>한결같이 좋았던 맛</span>
-                </h2>
+                <h2>늘 좋았던 맛</h2>
               </div>
               {consistent.length ? (
                 statList(consistent, "liked")
@@ -1234,9 +1218,7 @@ export function Insights({ archive }: { archive: Archive }) {
           <div className="insight-columns">
             <section>
               <div className="section-heading">
-                <h2>
-                  Taste by category<span>종류마다 다른 취향</span>
-                </h2>
+                <h2>종류별 취향</h2>
               </div>
               {categories.length ? (
                 categories.map((c) => {
@@ -1257,7 +1239,7 @@ export function Insights({ archive }: { archive: Archive }) {
                       <div>
                         <span>{c}</span>
                         <small>
-                          {rs.length}회 기록 · 호 {percent}%
+                          {rs.length}번 · 호 {percent}%
                         </small>
                       </div>
                       <div className="bar-track">
@@ -1274,9 +1256,7 @@ export function Insights({ archive }: { archive: Archive }) {
             </section>
             <section>
               <div className="section-heading">
-                <h2>
-                  Not for me<span>나와는 조금 달랐던 맛</span>
-                </h2>
+                <h2>나와 안 맞는 맛</h2>
               </div>
               {notForMe.length ? (
                 statList(notForMe, "disliked")
@@ -1292,15 +1272,13 @@ export function Insights({ archive }: { archive: Archive }) {
           </div>
           <section>
             <div className="section-heading">
-              <h2>
-                Changing tastes<span>시간에 따라 달라지는 입맛</span>
-              </h2>
+              <h2>시기별 변화</h2>
             </div>
             <div className="period-table">
               <div className="period-table-head">
-                <span>PERIOD</span>
-                <span>EATING RECORDS</span>
-                <span>LIKED</span>
+                <span>기간</span>
+                <span>식사</span>
+                <span>호</span>
               </div>
               {[
                 ...new Set(

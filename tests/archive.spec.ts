@@ -85,11 +85,13 @@ test("quick add, repeated meals, edit, delete, persistence, JSON and photos", as
   expect(data.photos[0].height).toBe(1200);
   expect(data.photos[0].storage_path).toMatch(/^data:image\/webp;base64,/);
   await page.locator(".record-actions button").first().click();
+  await page.getByRole("menuitem", { name: /기록 수정$/ }).click();
   dialog = page.getByRole("dialog");
   await dialog.getByLabel("한 줄 기억").fill("수정한 기억");
   await dialog.getByRole("button", { name: "변경 저장", exact: true }).click();
   await expect(page.getByText("수정한 기억", { exact: true })).toBeVisible();
-  await page.locator(".record-actions button").nth(1).click();
+  await page.locator(".record-actions > button").first().click();
+  await page.getByRole("menuitem", { name: /기록 삭제$/ }).click();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "기록 삭제", exact: true })
@@ -139,10 +141,10 @@ test("demo, navigation, search and narrow mobile viewport have no overflow", asy
   ).toHaveCount(2);
   await page.getByRole("button", { name: "닫기", exact: true }).click();
   for (const label of [
-    "Journal 기록",
-    "Places 장소",
-    "Insights 취향",
-    "Collection 컬렉션",
+    "기록",
+    "장소",
+    "취향",
+    "컬렉션",
   ]) {
     await page
       .getByRole("navigation")
@@ -155,7 +157,7 @@ test("demo, navigation, search and narrow mobile viewport have no overflow", asy
       ),
     ).toBe(true);
   }
-  await page.getByRole("button", { name: "불호 −", exact: true }).click();
+  await page.getByRole("button", { name: "− 불호", exact: true }).click();
   await expect(page.locator(".menu-tile")).toHaveCount(1);
 });
 test("invalid import and full localStorage keep existing records", async ({

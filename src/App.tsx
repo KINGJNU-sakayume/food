@@ -6,6 +6,11 @@ import {
   Settings as SettingsIcon,
   LockKeyhole,
   Download,
+  LayoutGrid,
+  Compass,
+  BookOpen,
+  MapPin,
+  BarChart3,
 } from "lucide-react";
 import type { Archive, EatingRecord } from "./types/model";
 import {
@@ -198,41 +203,36 @@ export default function App() {
       >
         본문으로 건너뛰기
       </a>
-      <div className="masthead-note">
-        <span>A PRIVATE ARCHIVE OF TASTE.</span>
-        <span>취향은, 개인적인 것.</span>
-      </div>
       <header className="site-header">
         <a href="#/collection" className="wordmark" aria-label="PALATE 컬렉션">
           PALATE
         </a>
-        <nav aria-label="주 메뉴">
-          {[
-            ["collection", "Collection", "컬렉션"],
-            ["choose", "Choose", "고르기"],
-            ["journal", "Journal", "기록"],
-            ["places", "Places", "장소"],
-            ["insights", "Insights", "취향"],
-          ].map(([key, label, ko]) => (
-            <a
-              href={`#/${key}`}
-              aria-label={`${label} ${ko}`}
-              className={
-                page === key || (page === "menu" && key === "collection")
-                  ? "active"
-                  : ""
-              }
-              aria-current={
-                page === key || (page === "menu" && key === "collection")
-                  ? "page"
-                  : undefined
-              }
-              key={key}
-            >
-              <span>{label}</span>
-              <small>{ko}</small>
-            </a>
-          ))}
+        <nav aria-label="주 메뉴" className="main-nav">
+          {(
+            [
+              ["collection", "컬렉션", LayoutGrid],
+              ["choose", "고르기", Compass],
+              ["journal", "기록", BookOpen],
+              ["places", "장소", MapPin],
+              ["insights", "취향", BarChart3],
+            ] as const
+          ).map(([key, label, Icon]) => {
+            const active =
+              page === key ||
+              (page === "menu" && key === "collection") ||
+              (page === "receive" && key === "choose");
+            return (
+              <a
+                href={`#/${key}`}
+                className={active ? "active" : ""}
+                aria-current={active ? "page" : undefined}
+                key={key}
+              >
+                <Icon size={22} strokeWidth={1.8} aria-hidden="true" />
+                <span>{label}</span>
+              </a>
+            );
+          })}
         </nav>
         <div className="header-actions">
           <button
@@ -260,12 +260,8 @@ export default function App() {
       </header>
       {archive.demo && (
         <div className="demo-banner">
-          <span>
-            예시 아카이브를 보고 있습니다. 가상의 기록과 참고 사진입니다.
-          </span>
-          <button onClick={() => setSettings(true)}>
-            새로 시작하기 <ArrowUpRight size={14} />
-          </button>
+          <span>예시 데이터를 보고 있어요</span>
+          <button onClick={() => setSettings(true)}>새로 시작</button>
         </div>
       )}
       <main
@@ -328,13 +324,7 @@ export default function App() {
         )}
       </main>
       <footer className="site-footer">
-        <a href="#/collection" className="footer-mark">
-          PALATE.
-        </a>
         <span>
-          A private archive of taste.
-          <br />
-          <small>{archive.user.display_name}</small>
           {archive.places.some(
             (p) => p.external_provider === "OPENSTREETMAP",
           ) && (
@@ -349,12 +339,10 @@ export default function App() {
           )}
         </span>
         <button className="text-button" onClick={() => setSettings(true)}>
-          <LockKeyhole size={13} />이 기기에 저장됨{" "}
-          <span className="footer-backup">/ 백업과 설정</span>
-          <ArrowUpRight size={14} />
+          <LockKeyhole size={15} />이 기기에 저장됨 · 백업과 설정
         </button>
       </footer>
-      {page !== "choose" && page !== "receive" && (
+      {page !== "choose" && page !== "receive" && page !== "menu" && (
         <button
           className="mobile-add"
           aria-label="새 식사 기록"
@@ -400,7 +388,7 @@ export default function App() {
             ) : (
               <>
                 <div className="search-result-group">
-                  <div className="eyebrow">MENUS / 메뉴와 태그</div>
+                  <div className="eyebrow">메뉴</div>
                   {matches.map((m) => (
                     <a
                       href={`#/menu/${m.id}`}
@@ -417,7 +405,7 @@ export default function App() {
                 </div>
                 {!!matchingBrands.length && (
                   <div className="search-result-group">
-                    <div className="eyebrow">BRANDS / 브랜드</div>
+                    <div className="eyebrow">브랜드</div>
                     {matchingBrands.map((b) => (
                       <a
                         key={b.id}
@@ -432,7 +420,7 @@ export default function App() {
                 )}
                 {!!matchingPlaces.length && (
                   <div className="search-result-group">
-                    <div className="eyebrow">PLACES / 장소</div>
+                    <div className="eyebrow">장소</div>
                     {matchingPlaces.map((p) => (
                       <a
                         key={p.id}
@@ -447,7 +435,7 @@ export default function App() {
                 )}
                 {!!matchingNotes.length && (
                   <div className="search-result-group">
-                    <div className="eyebrow">NOTES / 기록 속 기억</div>
+                    <div className="eyebrow">메모</div>
                     {matchingNotes.map((r) => (
                       <a
                         href={`#/menu/${r.menu_id}`}
