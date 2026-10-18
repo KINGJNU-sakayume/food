@@ -27,7 +27,7 @@ npx wrangler secret put NAVER_CLIENT_SECRET
 npx wrangler deploy
 ```
 
-비밀 값은 명령줄 인수·GitHub 소스·`VITE_` 변수·localStorage에 넣지 않습니다. CLI가 묻는 입력창에 입력합니다. 공개 페이지 메뉴 조회만 사용할 경우 네이버 검색 키는 필요 없지만 이 서버의 `/search`는 사용할 수 없습니다.
+비밀 값은 명령줄 인수·GitHub 소스·`VITE_` 변수·localStorage에 넣지 않습니다. CLI가 묻는 입력창에 입력합니다. 공개 페이지 메뉴 조회만 사용할 경우 네이버 검색 키는 필요 없습니다. `/search`가 미설정 상태(503)를 반환하면 클라이언트는 기본 Photon 이름 검색을 사용합니다.
 
 5. PALATE 설정의 **음식점 정보 연결 · 고급 설정**에서 배포된 Worker의 `https://...workers.dev` 주소를 저장합니다. 또는 빌드할 때 `VITE_RESTAURANT_API_URL`에 **공개 서비스 주소만** 지정할 수 있습니다.
 

@@ -69,9 +69,16 @@ export function restaurantProvider(endpoint: string): RestaurantProvider {
       if (base) {
         const url = new URL(base.replace(/\/$/, "") + "/search");
         url.searchParams.set("q", q);
-        const data = await jsonResponse(
-          await fetch(url, { signal, referrerPolicy: "origin" }),
-        );
+        const response = await fetch(url, { signal, referrerPolicy: "origin" });
+        // A menu-only service need not have Naver search credentials.
+        if (response.status === 503) {
+          await response.body?.cancel();
+          const fallback = await restaurantProvider("").search(q, signal);
+          if (cache.size >= 40) cache.delete(cache.keys().next().value!);
+          cache.set(key, { time: Date.now(), results: fallback });
+          return fallback;
+        }
+        const data = await jsonResponse(response);
         if (!Array.isArray(data.results))
           throw new Error("음식점 검색 결과의 형식을 확인해 주세요.");
         results = data.results

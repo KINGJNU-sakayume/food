@@ -379,3 +379,52 @@ test("a stale tab applies a new intention to the latest archive without losing a
   expect(data.wishes).toHaveLength(1);
   expect(data.menus).toHaveLength(6);
 });
+
+test("a menu-only service falls back to the default name search when Naver credentials are absent", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "아카이브 설정과 백업" }).click();
+  await page.getByText("음식점 정보 연결 · 고급 설정", { exact: true }).click();
+  await page
+    .getByLabel("음식점 조회 서비스 주소")
+    .fill("https://menu-only.example");
+  await page.getByRole("button", { name: "연결 설정 저장" }).click();
+  await page.getByRole("button", { name: "닫기", exact: true }).click();
+  await page.route("https://menu-only.example/search?**", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: "음식점 검색 연결이 준비되지 않았습니다." },
+    }),
+  );
+  await page.route(/photon\.komoot\.io\/api/, (route) =>
+    route.fulfill({
+      json: {
+        features: [
+          {
+            properties: {
+              osm_type: "N",
+              osm_id: 456,
+              osm_key: "amenity",
+              osm_value: "restaurant",
+              name: "기본 검색 식당",
+              city: "서울",
+              countrycode: "KR",
+            },
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("/#/choose");
+  await page.getByRole("button", { name: "음식점 추가", exact: true }).click();
+  await page.getByLabel("음식점 이름과 지역").fill("기본 검색 식당");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "검색", exact: true })
+    .click();
+  await expect(page.locator(".place-results")).toContainText("기본 검색 식당");
+  await expect(page.getByRole("dialog")).toContainText(
+    "Photon · OpenStreetMap",
+  );
+});

@@ -219,7 +219,8 @@ export default function AddPlace({
               </button>
             </form>
             <p className="micro">
-              {endpoint
+              {endpoint &&
+              !results.some((r) => r.external_provider === "OPENSTREETMAP")
                 ? "연결한 음식점 검색 서비스"
                 : "Photon · OpenStreetMap 기반 검색"}
               에서 검색합니다. 검색어는 해당 서비스로 전달됩니다.
@@ -246,7 +247,8 @@ export default function AddPlace({
                 가져와 보세요.
               </p>
             )}
-            {!endpoint && (
+            {(!endpoint ||
+              results.some((r) => r.external_provider === "OPENSTREETMAP")) && (
               <a
                 className="text-button"
                 href="https://www.openstreetmap.org/copyright"
