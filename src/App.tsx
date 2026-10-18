@@ -20,6 +20,16 @@ import {
   validateArchive,
 } from "./lib/data";
 import { download } from "./lib/download";
+import {
+  assertPortable,
+  hydrate,
+  loadPhotos,
+  missingPhotoIds,
+  photoKeys,
+  prunePhotos,
+  savePhotos,
+  unsavedPhotos,
+} from "./lib/photoStore";
 import { loadDemo } from "./lib/demo";
 import { Modal, dateLabel, Empty } from "./components/Common";
 import QuickAdd from "./components/QuickAdd";
@@ -96,8 +106,9 @@ export default function App() {
         const a = event.newValue
           ? validateArchive(JSON.parse(event.newValue))
           : emptyArchive();
-        archiveRef.current = a;
-        setArchive(a);
+        archiveRef.current = hydrate(a);
+        setArchive(archiveRef.current);
+        showPhotos(a);
         setQuick(undefined);
         setSettings(false);
         setDeleting(undefined);
@@ -118,6 +129,43 @@ export default function App() {
       clearTimeout(timer.current);
     };
   }, []);
+  // 사진 원본은 IndexedDB로 옮기고 localStorage에는 참조만 남긴다 (lib/photoStore.ts).
+  // 저장이 끝난 사진만 참조로 바뀌므로, 중간에 실패하거나 탭을 닫아도 사진은 localStorage에 남는다.
+  function movePhotosOut() {
+    const pending = unsavedPhotos(archiveRef.current);
+    if (!pending.length) return;
+    savePhotos(pending)
+      .then(() => {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) persistArchive(validateArchive(JSON.parse(stored)));
+      })
+      .catch(() => {
+        /* IndexedDB를 쓸 수 없으면 예전처럼 localStorage에 둔다. 다음 저장 때 다시 시도 */
+      });
+  }
+  function showPhotos(a: Archive) {
+    const ids = missingPhotoIds(a);
+    if (!ids.length) return;
+    loadPhotos(ids)
+      .then(() => {
+        archiveRef.current = hydrate(archiveRef.current);
+        setArchive(archiveRef.current);
+      })
+      .catch(() => setError("사진 원본을 읽지 못했습니다. 새로고침해 주세요."));
+  }
+  useEffect(() => {
+    if (boot.error) return;
+    const keys = photoKeys(boot.archive);
+    loadPhotos(missingPhotoIds(boot.archive))
+      .then(() => {
+        archiveRef.current = hydrate(archiveRef.current);
+        setArchive(archiveRef.current);
+        // 예전 형식(사진이 localStorage 안에 있는 아카이브)은 여기서 옮겨진다
+        movePhotosOut();
+        prunePhotos(keys).catch(() => {});
+      })
+      .catch(() => setError("사진 원본을 읽지 못했습니다. 새로고침해 주세요."));
+  }, []);
   function commit(
     fn: (a: Archive) => Archive,
     message: string | false = "아카이브에 저장했습니다.",
@@ -127,15 +175,16 @@ export default function App() {
       // Read the latest saved value before applying an incoming share or edit.
       // Another tab may have saved a link before its storage event arrives.
       const stored = localStorage.getItem(STORAGE_KEY);
-      const current = stored
-        ? validateArchive(JSON.parse(stored))
-        : archiveRef.current;
+      const current = hydrate(
+        stored ? validateArchive(JSON.parse(stored)) : archiveRef.current,
+      );
       const next = validateArchive(fn(current));
       persistArchive(next);
       archiveRef.current = next;
       setArchive(next);
       setError("");
       if (message) notify(message);
+      movePhotosOut();
       return true;
     } catch (e) {
       setError((e as Error).message);
@@ -144,6 +193,7 @@ export default function App() {
   }
   function recover(next: Archive) {
     try {
+      assertPortable(next);
       persistArchive(next);
       archiveRef.current = next;
       setArchive(next);
@@ -151,6 +201,7 @@ export default function App() {
       setCorruptRaw(undefined);
       setRestore(undefined);
       setError("");
+      movePhotosOut();
     } catch (e) {
       setError((e as Error).message);
     }

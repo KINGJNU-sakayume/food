@@ -1,6 +1,20 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 const KEY = "palate.archive.v1";
+/** Reads one photo original from the app's IndexedDB store (runs in the page). */
+const storedPhoto = (photoId: string) =>
+  new Promise<string | undefined>((resolve, reject) => {
+    const r = indexedDB.open("palate-photos");
+    r.onerror = () => reject(r.error);
+    r.onsuccess = () => {
+      const get = r.result.transaction("photos").objectStore("photos").get(photoId);
+      get.onsuccess = () => {
+        r.result.close();
+        resolve(get.result);
+      };
+      get.onerror = () => reject(get.error);
+    };
+  });
 async function create(page: Page, name = "테스트 로스카츠") {
   await page.getByRole("button", { name: "첫 식사 기록하기" }).click();
   const dialog = page.getByRole("dialog");
@@ -83,7 +97,48 @@ test("quick add, repeated meals, edit, delete, persistence, JSON and photos", as
   expect(data.photos).toHaveLength(1);
   expect(data.photos[0].width).toBe(1600);
   expect(data.photos[0].height).toBe(1200);
-  expect(data.photos[0].storage_path).toMatch(/^data:image\/webp;base64,/);
+  // The original moves to IndexedDB; localStorage keeps only idb:<photo id>
+  const photoId = data.photos[0].id;
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (k) => JSON.parse(localStorage.getItem(k)!).photos[0].storage_path,
+        KEY,
+      ),
+    )
+    .toBe(`idb:${photoId}`);
+  const original = await page.evaluate(storedPhoto, photoId);
+  expect(original).toMatch(/^data:image\/webp;base64,/);
+  // An archive saved before this change (photo inside localStorage) is migrated on load
+  await page.evaluate(
+    ([k, src]) => {
+      const a = JSON.parse(localStorage.getItem(k)!);
+      a.photos[0].storage_path = src;
+      localStorage.setItem(k, JSON.stringify(a));
+      return new Promise<void>((resolve) => {
+        const r = indexedDB.open("palate-photos");
+        r.onsuccess = () => {
+          const tx = r.result.transaction("photos", "readwrite");
+          tx.objectStore("photos").clear();
+          tx.oncomplete = () => {
+            r.result.close();
+            resolve();
+          };
+        };
+      });
+    },
+    [KEY, original] as const,
+  );
+  await page.reload();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (k) => JSON.parse(localStorage.getItem(k)!).photos[0].storage_path,
+        KEY,
+      ),
+    )
+    .toBe(`idb:${photoId}`);
+  expect(await page.evaluate(storedPhoto, photoId)).toBe(original);
   await page.locator(".record-actions button").first().click();
   dialog = page.getByRole("dialog");
   await dialog.getByLabel("한 줄 기억").fill("수정한 기억");

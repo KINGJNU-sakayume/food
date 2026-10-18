@@ -12,6 +12,7 @@
   "include": [
     "src/lib/data.ts",
     "src/lib/discovery.ts",
+    "src/lib/photoStore.ts",
     "src/lib/urls.ts",
     "src/types/model.ts",
     "tests/*.test.ts"
