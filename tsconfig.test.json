@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "skipLibCheck": true,
+    "strict": true,
+    "outDir": "work/test-build",
+    "types": ["node"]
+  },
+  "include": ["src/lib/data.ts", "src/types/model.ts", "tests/data.test.ts"]
+}
