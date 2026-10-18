@@ -4,6 +4,9 @@ import type { Archive } from "../types/model";
 import { emptyArchive, today, validateArchive } from "../lib/data";
 import { download } from "../lib/download";
 import { Modal } from "./Common";
+import { ShortcutGuide } from "./DiscoveryCommon";
+import { httpsUrl } from "../lib/urls";
+import { defaultEndpoint } from "../lib/restaurants";
 export default function Settings({
   archive,
   onClose,
@@ -19,7 +22,11 @@ export default function Settings({
     [pending, setPending] = useState<Archive>(),
     [error, setError] = useState(""),
     [clear, setClear] = useState(false),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [endpoint, setEndpoint] = useState(
+      archive.preferences.restaurant_endpoint || "",
+    ),
+    [shortcut, setShortcut] = useState(false);
   async function importFile(file?: File) {
     if (!file) return;
     setError("");
@@ -118,8 +125,8 @@ export default function Settings({
         <div className="settings-section">
           <h3>내 기록 가져가기</h3>
           <p className="muted">
-            JSON에는 메뉴, 식사 기록, 태그와 사진이 모두 포함됩니다. CSV는 표로
-            읽기 위한 기록 목록입니다.
+            JSON에는 음식점, 관심 표시, 보관한 링크, 식사 기록과 사진이 모두
+            포함됩니다. CSV는 표로 읽기 위한 기록 목록입니다.
           </p>
           <button
             className="settings-action"
@@ -184,6 +191,9 @@ export default function Settings({
                 <br />
                 메뉴 {pending.menus.length}개 · 식사 {pending.records.length}건
                 · 사진 {pending.photos.length}장
+                <br />
+                관심 표시 {pending.wishes.length}개 · 보관한 링크{" "}
+                {pending.saved_links.length}개
               </p>
               <p>
                 현재 아카이브 전체를 이 백업으로 교체합니다. 먼저 현재 기록을
@@ -212,9 +222,72 @@ export default function Settings({
           )}
         </div>
         <div className="settings-section">
+          <h3>아이폰에서 링크 공유하기</h3>
+          <p className="muted">
+            ‘PALATE에 저장’ 단축어를 만들어 두면 인스타그램이나 지도 앱에서
+            공유한 링크가 보관함에 저장됩니다.
+          </p>
+          <button className="text-button" onClick={() => setShortcut(true)}>
+            아이폰 단축어 설정 안내 <ArrowUpRight size={16} />
+          </button>
+        </div>
+        <div className="settings-section">
+          <details className="connection-settings">
+            <summary>음식점 정보 연결 · 고급 설정</summary>
+            <p className="muted">
+              기본 이름 검색은 OpenStreetMap 데이터를 사용하는 Photon을
+              사용합니다. 네이버 검색과 공개 웹페이지의 메뉴 자동 불러오기는
+              별도의 조회 서비스 주소를 연결하면 사용할 수 있습니다. 개인 기록과
+              보관함은 계속 이 브라우저에 저장됩니다.
+            </p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setError("");
+                if (endpoint.trim() && !httpsUrl(endpoint.trim())) {
+                  setError("연결할 서비스의 https 주소를 확인해 주세요.");
+                  return;
+                }
+                if (
+                  onSave((a) => ({
+                    ...a,
+                    preferences: {
+                      ...a.preferences,
+                      restaurant_endpoint: endpoint.trim() || undefined,
+                    },
+                  }))
+                )
+                  setNotice("음식점 정보 연결 설정을 저장했습니다.");
+              }}
+            >
+              <label className="field">
+                <span>음식점 조회 서비스 주소</span>
+                <input
+                  type="url"
+                  maxLength={4000}
+                  value={endpoint}
+                  onChange={(e) => setEndpoint(e.target.value)}
+                  placeholder={
+                    defaultEndpoint() ||
+                    "https://palate-restaurants.example.workers.dev"
+                  }
+                />
+              </label>
+              <p className="micro">
+                프랜차이즈 수록 메뉴는 연결 없이 사용할 수 있습니다. 모든
+                음식점의 메뉴 제공을 보장하는 연결은 아닙니다.
+              </p>
+              <button className="text-button">
+                연결 설정 저장 <ArrowUpRight size={15} />
+              </button>
+            </form>
+          </details>
+        </div>
+        <div className="settings-section">
           <h3>기기에 남는 개인 기록</h3>
           <p className="muted">
-            계정이나 서버 전송 없이 이 기기에서 사용합니다. 브라우저 데이터
+            개인 기록은 계정 없이 이 기기에서 관리합니다. 외부 음식점 검색 시
+            검색어와 조회할 링크는 해당 서비스에 전달됩니다. 브라우저 데이터
             삭제, 시크릿 모드 종료 시 기록이 사라질 수 있습니다. 같은 브라우저
             프로필을 쓰는 사람은 기록을 열 수 있습니다.
           </p>
@@ -234,8 +307,8 @@ export default function Settings({
           {clear && (
             <div className="inline-notice">
               <p>
-                메뉴, 기록과 사진을 모두 삭제합니다. JSON 백업이 있어야 복원할
-                수 있습니다.
+                음식점, 메뉴, 관심 표시, 보관한 링크와 기록·사진을 모두
+                삭제합니다. JSON 백업이 있어야 복원할 수 있습니다.
               </p>
               <div className="button-row">
                 <button
@@ -259,6 +332,7 @@ export default function Settings({
           </p>
         )}
         {notice && <p role="status">{notice}</p>}
+        {shortcut && <ShortcutGuide onClose={() => setShortcut(false)} />}
       </div>
     </Modal>
   );

@@ -1,0 +1,118 @@
+{
+  "version": "2026-10-18",
+  "brands": [
+    {
+      "key": "momstouch",
+      "name": "맘스터치",
+      "category": "버거",
+      "source_url": "https://momstouch.co.kr/",
+      "menus": [
+        "싸이버거",
+        "화이트갈릭싸이버거",
+        "딥치즈싸이버거",
+        "불싸이버거",
+        "언빌리버블버거",
+        "케이준양념감자"
+      ]
+    },
+    {
+      "key": "mcdonalds",
+      "name": "맥도날드",
+      "category": "버거",
+      "source_url": "https://www.mcdonalds.co.kr/kor/menu/burger",
+      "menus": [
+        "빅맥",
+        "더블 쿼터파운더 치즈",
+        "쿼터파운더 치즈",
+        "맥스파이시 상하이 버거",
+        "1955 버거",
+        "불고기 버거",
+        "더블 불고기 버거",
+        "슈슈 버거",
+        "슈비 버거",
+        "베이컨 토마토 디럭스"
+      ]
+    },
+    {
+      "key": "burgerking",
+      "name": "버거킹",
+      "category": "버거",
+      "source_url": "https://www.burgerking.co.kr/menu/main",
+      "menus": [
+        "와퍼",
+        "치즈와퍼",
+        "통새우와퍼",
+        "베이컨치즈와퍼",
+        "콰트로치즈와퍼",
+        "와퍼주니어",
+        "불고기와퍼"
+      ]
+    },
+    {
+      "key": "starbucks",
+      "name": "스타벅스",
+      "category": "커피",
+      "source_url": "https://www.starbucks.co.kr/menu/drink_list.do",
+      "menus": [
+        "카페 아메리카노",
+        "아이스 카페 아메리카노",
+        "카페 라떼",
+        "아이스 카페 라떼",
+        "카푸치노",
+        "카라멜 마키아또",
+        "카페 모카",
+        "화이트 초콜릿 모카",
+        "플랫 화이트",
+        "콜드 브루",
+        "돌체 콜드 브루",
+        "자몽 허니 블랙 티"
+      ]
+    },
+    {
+      "key": "kyochon",
+      "name": "교촌치킨",
+      "category": "치킨",
+      "source_url": "https://www.kyochon.com/menu/chicken.asp",
+      "menus": [
+        "교촌오리지날",
+        "교촌콤보",
+        "교촌레드오리지날",
+        "교촌레드콤보",
+        "교촌허니오리지날",
+        "교촌허니콤보",
+        "교촌반반오리지날"
+      ]
+    },
+    {
+      "key": "mega",
+      "name": "메가MGC커피",
+      "category": "커피",
+      "source_url": "https://www.mega-mgccoffee.com/menu/",
+      "menus": [
+        "아메리카노",
+        "카페라떼",
+        "바닐라라떼",
+        "카라멜마끼아또",
+        "카페모카",
+        "큐브라떼",
+        "딸기라떼",
+        "메가에이드"
+      ]
+    },
+    {
+      "key": "paik",
+      "name": "빽다방",
+      "category": "커피",
+      "source_url": "https://paikdabang.com/menu/menu_coffee/",
+      "menus": [
+        "앗!메리카노",
+        "원조커피",
+        "빽's 카페라떼",
+        "바닐라라떼",
+        "카페모카",
+        "카라멜마키아또",
+        "달달연유라떼"
+      ]
+    }
+  ]
+}

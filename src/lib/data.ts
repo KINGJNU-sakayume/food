@@ -4,6 +4,7 @@ import type {
   RecordDraft,
   Verdict,
 } from "../types/model.js";
+import { httpsUrl } from "./urls.js";
 
 export const STORAGE_KEY = "palate.archive.v1";
 export const verdicts = {
@@ -28,7 +29,7 @@ export const today = () => {
 };
 export function emptyArchive(): Archive {
   return {
-    schema_version: 1,
+    schema_version: 2,
     user: {
       id: id(),
       display_name: "나의 아카이브",
@@ -42,6 +43,9 @@ export function emptyArchive(): Archive {
     photos: [],
     tags: [],
     record_tags: [],
+    wishes: [],
+    saved_links: [],
+    preferences: {},
     demo: false,
   };
 }
@@ -86,6 +90,18 @@ export function removePlace(a: Archive, placeId: string): Archive {
     records: a.records.map((r) =>
       r.place_id === placeId ? { ...r, place_id: undefined } : r,
     ),
+    menus: a.menus.map((m) =>
+      m.place_id === placeId ? { ...m, place_id: undefined } : m,
+    ),
+    wishes: a.wishes.filter(
+      (w) => !(w.target_type === "PLACE" && w.target_id === placeId),
+    ),
+    saved_links: a.saved_links.map((l) => ({
+      ...l,
+      targets: l.targets.filter(
+        (t) => !(t.type === "PLACE" && t.id === placeId),
+      ),
+    })),
   };
 }
 export function updateMenuInfo(
@@ -149,31 +165,13 @@ export function saveRecord(
     };
     a.brands.push(brand);
   }
-  let menu = draft.menu_id
-    ? a.menus.find((m) => m.id === draft.menu_id)
-    : !draft.force_new_menu
-      ? a.menus.find(
-          (m) =>
-            m.normalized_name === normalize(draft.menu_name) &&
-            m.brand_id === brand?.id,
-        )
-      : undefined;
-  if (!menu) {
-    menu = {
-      ...owned(),
-      name: draft.menu_name.trim(),
-      normalized_name: normalize(draft.menu_name),
-      brand_id: brand?.id,
-      category: draft.category.trim(),
-      active: true,
-    };
-    a.menus.push(menu);
-  }
-  let place = a.places.find(
-    (p) =>
-      p.normalized_name === normalize(draft.place_name) &&
-      p.brand_id === brand?.id,
-  );
+  let place = draft.place_id
+    ? a.places.find((p) => p.id === draft.place_id)
+    : a.places.find(
+        (p) =>
+          p.normalized_name === normalize(draft.place_name) &&
+          p.brand_id === brand?.id,
+      );
   if (draft.place_name.trim() && !place) {
     place = {
       ...owned(),
@@ -185,6 +183,35 @@ export function saveRecord(
     };
     a.places.push(place);
   }
+  let menu = draft.menu_id
+    ? a.menus.find((m) => m.id === draft.menu_id)
+    : !draft.force_new_menu
+      ? a.menus.find(
+          (m) =>
+            m.normalized_name === normalize(draft.menu_name) &&
+            m.brand_id === brand?.id &&
+            (brand
+              ? true
+              : m.place_id === place?.id ||
+                (!m.place_id &&
+                  !a.offerings.some(
+                    (o) => o.menu_id === m.id && o.place_id !== place?.id,
+                  ))),
+        )
+      : undefined;
+  if (!menu) {
+    menu = {
+      ...owned(),
+      name: draft.menu_name.trim(),
+      normalized_name: normalize(draft.menu_name),
+      brand_id: brand?.id,
+      category: draft.category.trim(),
+      active: true,
+      place_id: brand ? undefined : place?.id,
+    };
+    a.menus.push(menu);
+  }
+  menu.discovered = false;
   if (
     place &&
     !a.offerings.some((o) => o.menu_id === menu.id && o.place_id === place.id)
@@ -217,6 +244,11 @@ export function saveRecord(
     updated_at: now,
   };
   a.records = a.records.filter((r) => r.id !== record.id).concat(record);
+  // Editing an old event must not consume a newly added intention.
+  if (!recordId)
+    a.wishes = a.wishes.filter(
+      (w) => !(w.target_type === "MENU" && w.target_id === menu.id),
+    );
   a.photos = a.photos
     .filter((p) => p.eating_record_id !== record.id)
     .concat(
@@ -260,12 +292,12 @@ const optionalString = (v: unknown, max = 2000) =>
 export function validateArchive(input: unknown): Archive {
   const fail = (): never => {
     throw new Error(
-      "PALATE v1 백업 형식 또는 데이터 연결이 올바르지 않습니다. 기존 기록은 그대로 유지됩니다.",
+      "PALATE 백업 형식 또는 데이터 연결이 올바르지 않습니다. 기존 기록은 그대로 유지됩니다.",
     );
   };
   if (
     !object(input) ||
-    input.schema_version !== 1 ||
+    ![1, 2].includes(input.schema_version as number) ||
     !object(input.user) ||
     !str(input.user.id, 100) ||
     !str(input.user.display_name, 100) ||
@@ -273,6 +305,15 @@ export function validateArchive(input: unknown): Archive {
     typeof input.demo !== "boolean"
   )
     return fail();
+  // Read v1 without mutating or overwriting the original storage value.
+  if (input.schema_version === 1)
+    input = {
+      ...input,
+      schema_version: 2,
+      wishes: [],
+      saved_links: [],
+      preferences: {},
+    };
   const keys = [
     "brands",
     "places",
@@ -282,9 +323,12 @@ export function validateArchive(input: unknown): Archive {
     "photos",
     "tags",
     "record_tags",
+    "wishes",
+    "saved_links",
   ] as const;
   for (const k of keys) {
-    if (!Array.isArray(input[k]) || input[k].length > 100000) return fail();
+    const rows = (input as Record<string, unknown>)[k];
+    if (!Array.isArray(rows) || rows.length > 100000) return fail();
   }
   const a = input as unknown as Archive,
     uid = a.user.id;
@@ -325,7 +369,11 @@ export function validateArchive(input: unknown): Archive {
       !optionalString(x.category, 100) ||
       !optionalString(x.description) ||
       (x.favourite_override !== undefined &&
-        typeof x.favourite_override !== "boolean")
+        typeof x.favourite_override !== "boolean") ||
+      (x.discovered !== undefined && typeof x.discovered !== "boolean") ||
+      (x.place_id !== undefined && !places.has(x.place_id)) ||
+      !optionalString(x.external_menu_id, 300) ||
+      (x.source_url !== undefined && !httpsUrl(x.source_url))
     )
       return fail();
   for (const x of a.places)
@@ -341,7 +389,9 @@ export function validateArchive(input: unknown): Archive {
       ].includes(x.place_type) ||
       !optionalString(x.address) ||
       !optionalString(x.external_provider, 100) ||
-      !optionalString(x.external_place_id, 200)
+      !optionalString(x.external_place_id, 200) ||
+      (x.source_url !== undefined && !httpsUrl(x.source_url)) ||
+      (x.menus_checked_at !== undefined && !timestamp(x.menus_checked_at))
     )
       return fail();
   for (const x of a.offerings)
@@ -401,6 +451,59 @@ export function validateArchive(input: unknown): Archive {
       return fail();
     joins.add(key);
   }
+  for (const x of a.brands)
+    if (
+      !optionalString(x.catalog_key, 100) ||
+      (x.source_url !== undefined && !httpsUrl(x.source_url))
+    )
+      return fail();
+  const targetExists = (type: unknown, targetId: unknown) =>
+    str(targetId, 100) &&
+    (type === "MENU"
+      ? menus.has(targetId)
+      : type === "PLACE"
+        ? places.has(targetId)
+        : type === "BRAND"
+          ? brands.has(targetId)
+          : false);
+  const wishKeys = new Set();
+  for (const x of a.wishes) {
+    const key = x.target_type + ":" + x.target_id;
+    if (!targetExists(x.target_type, x.target_id) || wishKeys.has(key))
+      return fail();
+    wishKeys.add(key);
+  }
+  const linkUrls = new Set();
+  for (const x of a.saved_links) {
+    if (
+      !httpsUrl(x.url) ||
+      !["REEL", "PLACE"].includes(x.kind) ||
+      !str(x.title, 200) ||
+      !str(x.note, 2000) ||
+      !timestamp(x.updated_at) ||
+      !Array.isArray(x.targets) ||
+      x.targets.length > 200 ||
+      linkUrls.has(x.url)
+    )
+      return fail();
+    linkUrls.add(x.url);
+    const seen = new Set();
+    for (const t of x.targets) {
+      if (
+        !object(t) ||
+        !targetExists(t.type, t.id) ||
+        seen.has(t.type + ":" + t.id)
+      )
+        return fail();
+      seen.add(t.type + ":" + t.id);
+    }
+  }
+  if (
+    !object(a.preferences) ||
+    (a.preferences.restaurant_endpoint !== undefined &&
+      !httpsUrl(a.preferences.restaurant_endpoint))
+  )
+    return fail();
   return structuredClone(a);
 }
 export function persistArchive(

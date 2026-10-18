@@ -35,6 +35,7 @@ import {
   MenuTile,
   VerdictLabel,
 } from "../components/Common";
+import { WantButton } from "../components/DiscoveryCommon";
 
 type Add = (menuId?: string) => void;
 const heading = {
@@ -291,6 +292,7 @@ export function Collection({
   const menus = useMemo(
     () =>
       archive.menus
+        .filter((m) => !m.discovered || menuRecords(archive, m.id).length > 0)
         .filter(
           (m) =>
             (!query || searchable(archive, m.id).includes(normalize(query))) &&
@@ -331,7 +333,9 @@ export function Collection({
           <span>OF EVERYDAY TASTE</span>
         </div>
       </PageHeading>
-      {!archive.menus.length ? (
+      {!archive.menus.some(
+        (m) => !m.discovered || menuRecords(archive, m.id).length > 0,
+      ) ? (
         <section className="welcome">
           <div className="welcome-line">
             <span className="eyebrow">YOUR FIRST PAGE</span>
@@ -354,9 +358,13 @@ export function Collection({
               <button className="primary" onClick={() => onAdd()}>
                 <Plus size={18} />첫 식사 기록하기
               </button>
-              <button className="text-button demo-link" onClick={onDemo}>
-                예시 아카이브 둘러보기 <ArrowUpRight size={16} />
-              </button>
+              {!archive.brands.length &&
+                !archive.places.length &&
+                !archive.saved_links.length && (
+                  <button className="text-button demo-link" onClick={onDemo}>
+                    예시 아카이브 둘러보기 <ArrowUpRight size={16} />
+                  </button>
+                )}
             </div>
             <div className="welcome-art" aria-hidden="true">
               <div className="large-plate">
@@ -730,8 +738,14 @@ export function MenuDetail({
           </div>
           <button className="primary" onClick={() => onAdd(menu.id)}>
             <Plus size={18} />
-            다시 먹은 기록
+            {rs.length ? "다시 먹은 기록" : "먹은 기록 남기기"}
           </button>
+          <WantButton
+            archive={archive}
+            type="MENU"
+            targetId={menu.id}
+            onSave={onUpdate}
+          />
           <button className="text-button" onClick={() => setEdit(!edit)}>
             <Pencil size={15} />
             메뉴 정보 수정

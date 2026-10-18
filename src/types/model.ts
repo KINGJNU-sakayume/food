@@ -22,6 +22,8 @@ interface Owned {
 export interface Brand extends Owned {
   name: string;
   normalized_name: string;
+  catalog_key?: string;
+  source_url?: string;
 }
 export interface Place extends Owned {
   name: string;
@@ -31,6 +33,8 @@ export interface Place extends Owned {
   place_type: PlaceType;
   external_provider?: string;
   external_place_id?: string;
+  source_url?: string;
+  menus_checked_at?: string;
 }
 export interface Menu extends Owned {
   name: string;
@@ -40,6 +44,10 @@ export interface Menu extends Owned {
   description?: string;
   active: boolean;
   favourite_override?: boolean;
+  place_id?: string;
+  discovered?: boolean;
+  external_menu_id?: string;
+  source_url?: string;
 }
 export interface MenuOffering extends Owned {
   menu_id: string;
@@ -75,8 +83,25 @@ export interface RecordTag {
   eating_record_id: string;
   tag_id: string;
 }
+export type TargetType = "BRAND" | "PLACE" | "MENU";
+export interface LinkTarget {
+  type: TargetType;
+  id: string;
+}
+export interface Wish extends Owned {
+  target_type: TargetType;
+  target_id: string;
+}
+export interface SavedLink extends Owned {
+  url: string;
+  kind: "REEL" | "PLACE";
+  title: string;
+  note: string;
+  targets: LinkTarget[];
+  updated_at: string;
+}
 export interface Archive {
-  schema_version: 1;
+  schema_version: 2;
   user: User;
   brands: Brand[];
   places: Place[];
@@ -86,6 +111,9 @@ export interface Archive {
   photos: Photo[];
   tags: Tag[];
   record_tags: RecordTag[];
+  wishes: Wish[];
+  saved_links: SavedLink[];
+  preferences: { restaurant_endpoint?: string };
   demo: boolean;
 }
 export interface RecordDraft {
@@ -94,6 +122,7 @@ export interface RecordDraft {
   force_new_menu?: boolean;
   brand_name: string;
   place_name: string;
+  place_id?: string;
   address: string;
   category: string;
   verdict: Verdict;

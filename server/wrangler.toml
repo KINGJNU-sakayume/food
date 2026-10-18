@@ -1,0 +1,11 @@
+name = "palate-restaurants"
+main = "restaurant-worker.mjs"
+compatibility_date = "2026-10-01"
+
+[vars]
+# Set to your PALATE origin (without the /food path), before deploying.
+ALLOWED_ORIGIN = "https://kingjnu-sakayume.github.io"
+# Explicit restaurant website hosts whose public JSON-LD menus you want to read.
+ALLOWED_MENU_HOSTS = ""
+# NAVER_CLIENT_ID and NAVER_CLIENT_SECRET must be set with wrangler secret put.
+# No database, user records, link inbox or photos are stored in this Worker.

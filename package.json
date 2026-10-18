@@ -10,7 +10,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build && node scripts/build-sw.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "tsc -p tsconfig.test.json && node --test work/test-build/tests/*.test.js",
+    "test": "tsc -p tsconfig.test.json && node --test work/test-build/tests/*.test.js tests/*.test.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {

@@ -110,7 +110,7 @@ test("edit updates the same event and replaces its photo/tag links", () => {
 test("JSON rejects unknown versions, other owners, orphan links, bad enums and unsafe photos", () => {
   const a = demoArchive();
   for (const mutate of [
-    (x: any) => (x.schema_version = 2),
+    (x: any) => (x.schema_version = 999),
     (x: any) => (x.records[0].user_id = "other"),
     (x: any) => (x.records[0].menu_id = "missing"),
     (x: any) => (x.records[0].verdict = "FIVE_STARS"),

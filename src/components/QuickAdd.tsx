@@ -24,23 +24,29 @@ export default function QuickAdd({
   onSave,
   record,
   initialMenuId,
+  initialPlaceId,
 }: {
   archive: Archive;
   onClose: () => void;
   onSave: (fn: (a: Archive) => Archive) => boolean;
   record?: EatingRecord;
   initialMenuId?: string;
+  initialPlaceId?: string;
 }) {
   const initialMenu = archive.menus.find(
       (m) => m.id === (record?.menu_id || initialMenuId),
     ),
-    place = archive.places.find((p) => p.id === record?.place_id);
+    place = archive.places.find(
+      (p) =>
+        p.id === (record?.place_id || initialPlaceId || initialMenu?.place_id),
+    );
   const [draft, setDraft] = useState<RecordDraft>({
     menu_name: initialMenu?.name || "",
     menu_id: initialMenu?.id,
     brand_name:
       archive.brands.find((b) => b.id === initialMenu?.brand_id)?.name || "",
     place_name: place?.name || "",
+    place_id: place?.id,
     address: place?.address || "",
     category: initialMenu?.category || "",
     verdict: record?.verdict as Verdict,
@@ -71,6 +77,11 @@ export default function QuickAdd({
           archive.brands.find((b) => b.id === m.brand_id)?.name || "",
         ).includes(normalize(draft.menu_name)),
     )
+    .sort((a, b) =>
+      (menuRecords(archive, b.id)[0]?.eaten_at || "").localeCompare(
+        menuRecords(archive, a.id)[0]?.eaten_at || "",
+      ),
+    )
     .slice(0, 5);
   const similar =
     !draft.menu_id &&
@@ -85,12 +96,16 @@ export default function QuickAdd({
     );
   const selectMenu = (menuId: string) => {
     const m = archive.menus.find((m) => m.id === menuId)!;
+    const menuPlace = archive.places.find((p) => p.id === m.place_id);
     setDraft((d) => ({
       ...d,
       menu_id: m.id,
       menu_name: m.name,
       brand_name: archive.brands.find((b) => b.id === m.brand_id)?.name || "",
       category: m.category || "",
+      place_id: menuPlace?.id,
+      place_name: menuPlace?.name || "",
+      address: menuPlace?.address || "",
       force_new_menu: false,
     }));
     setSuggest(false);
@@ -156,7 +171,7 @@ export default function QuickAdd({
         {suggest && archive.menus.length > 0 && (
           <div className="suggestions">
             <div className="eyebrow">
-              {draft.menu_name ? "기존 메뉴" : "최근 메뉴"}
+              {draft.menu_name ? "기존 메뉴" : "최근·저장한 메뉴"}
             </div>
             {candidates.map((m) => (
               <button type="button" key={m.id} onClick={() => selectMenu(m.id)}>
@@ -294,7 +309,13 @@ export default function QuickAdd({
                 maxLength={200}
                 placeholder="기존 장소를 찾거나 새 장소 입력"
                 value={draft.place_name}
-                onChange={(e) => update("place_name", e.target.value)}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    place_name: e.target.value,
+                    place_id: undefined,
+                  }))
+                }
               />
               <datalist id="places">
                 {archive.places

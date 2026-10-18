@@ -24,6 +24,7 @@ import { loadDemo } from "./lib/demo";
 import { Modal, dateLabel, Empty } from "./components/Common";
 import QuickAdd from "./components/QuickAdd";
 import Settings from "./components/Settings";
+import ChoosePage, { ReceiveShare } from "./pages/ChoosePage";
 import {
   Collection,
   Insights,
@@ -56,7 +57,12 @@ export default function App() {
     [recovery, setRecovery] = useState(boot.error),
     [corruptRaw, setCorruptRaw] = useState(boot.raw),
     [route, setRoute] = useState(location.hash || "#/collection"),
-    [quick, setQuick] = useState<{ record?: EatingRecord; menuId?: string }>(),
+    [quick, setQuick] = useState<{
+      record?: EatingRecord;
+      menuId?: string;
+      placeId?: string;
+    }>(),
+    [syncRevision, setSyncRevision] = useState(0),
     [settings, setSettings] = useState(false),
     [search, setSearch] = useState(false),
     [query, setQuery] = useState(""),
@@ -97,6 +103,7 @@ export default function App() {
         setDeleting(undefined);
         setDeletingPlace(undefined);
         setDemoConfirm(false);
+        setSyncRevision((value) => value + 1);
         notify("다른 탭에서 변경된 아카이브를 불러왔습니다.");
       } catch {
         setCorruptRaw(event.newValue ?? undefined);
@@ -111,15 +118,24 @@ export default function App() {
       clearTimeout(timer.current);
     };
   }, []);
-  function commit(fn: (a: Archive) => Archive): boolean {
+  function commit(
+    fn: (a: Archive) => Archive,
+    message: string | false = "아카이브에 저장했습니다.",
+  ): boolean {
     try {
       if (recovery) throw new Error("먼저 아카이브 복구를 완료해 주세요.");
-      const next = validateArchive(fn(archiveRef.current));
+      // Read the latest saved value before applying an incoming share or edit.
+      // Another tab may have saved a link before its storage event arrives.
+      const stored = localStorage.getItem(STORAGE_KEY);
+      const current = stored
+        ? validateArchive(JSON.parse(stored))
+        : archiveRef.current;
+      const next = validateArchive(fn(current));
       persistArchive(next);
       archiveRef.current = next;
       setArchive(next);
       setError("");
-      notify("아카이브에 저장했습니다.");
+      if (message) notify(message);
       return true;
     } catch (e) {
       setError((e as Error).message);
@@ -139,11 +155,15 @@ export default function App() {
       setError((e as Error).message);
     }
   }
-  const path = route.replace(/^#\/?/, "").split("/"),
+  const routeUrl = new URL(
+    route.replace(/^#/, "") || "/collection",
+    "https://palate.local",
+  );
+  const path = routeUrl.pathname.replace(/^\//, "").split("/"),
     page = path[0] || "collection";
-  const add = (menuId?: string) => {
+  const add = (menuId?: string, placeId?: string) => {
     setError("");
-    setQuick({ menuId });
+    setQuick({ menuId, placeId });
   };
   const edit = (record: EatingRecord) => {
     setError("");
@@ -189,12 +209,14 @@ export default function App() {
         <nav aria-label="주 메뉴">
           {[
             ["collection", "Collection", "컬렉션"],
+            ["choose", "Choose", "고르기"],
             ["journal", "Journal", "기록"],
             ["places", "Places", "장소"],
             ["insights", "Insights", "취향"],
           ].map(([key, label, ko]) => (
             <a
               href={`#/${key}`}
+              aria-label={`${label} ${ko}`}
               className={
                 page === key || (page === "menu" && key === "collection")
                   ? "active"
@@ -246,12 +268,32 @@ export default function App() {
           </button>
         </div>
       )}
-      <main id="main-content" tabIndex={-1} key={`${page}-${path[1] || ""}`}>
+      <main
+        id="main-content"
+        tabIndex={-1}
+        key={`${page}-${path[1] || ""}-${syncRevision}`}
+      >
         {page === "collection" ? (
           <Collection
             archive={archive}
             onAdd={add}
             onDemo={() => setDemoConfirm(true)}
+          />
+        ) : page === "choose" ? (
+          <ChoosePage
+            archive={archive}
+            path={path}
+            params={routeUrl.searchParams}
+            onSave={commit}
+            onAdd={add}
+            onSettings={() => setSettings(true)}
+          />
+        ) : page === "receive" ? (
+          <ReceiveShare
+            archive={archive}
+            params={routeUrl.searchParams}
+            onSave={commit}
+            blocked={!!recovery}
           />
         ) : page === "journal" ? (
           <Journal
@@ -293,6 +335,18 @@ export default function App() {
           A private archive of taste.
           <br />
           <small>{archive.user.display_name}</small>
+          {archive.places.some(
+            (p) => p.external_provider === "OPENSTREETMAP",
+          ) && (
+            <a
+              className="osm-credit"
+              href="https://www.openstreetmap.org/copyright"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              음식점 정보 © OpenStreetMap contributors
+            </a>
+          )}
         </span>
         <button className="text-button" onClick={() => setSettings(true)}>
           <LockKeyhole size={13} />이 기기에 저장됨{" "}
@@ -300,18 +354,21 @@ export default function App() {
           <ArrowUpRight size={14} />
         </button>
       </footer>
-      <button
-        className="mobile-add"
-        aria-label="새 식사 기록"
-        onClick={() => add()}
-      >
-        <Plus size={25} />
-      </button>
+      {page !== "choose" && page !== "receive" && (
+        <button
+          className="mobile-add"
+          aria-label="새 식사 기록"
+          onClick={() => add()}
+        >
+          <Plus size={25} />
+        </button>
+      )}
       {quick && (
         <QuickAdd
           archive={archive}
           record={quick.record}
           initialMenuId={quick.menuId}
+          initialPlaceId={quick.placeId}
           onClose={() => setQuick(undefined)}
           onSave={commit}
         />
