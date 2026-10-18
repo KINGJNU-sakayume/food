@@ -259,7 +259,7 @@ export function ShortcutGuide({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="SAVE FROM YOUR IPHONE" onClose={onClose} wide>
       <div className="shortcut-guide">
-                <h2>공유 메뉴에서, 바로 보관함으로.</h2>
+        <h2>공유 메뉴에서, 바로 보관함으로.</h2>
         <p>
           아이폰 단축어에 아래 동작을 한 번 만들어 두세요. 릴스를 보다가 공유
           시트의 <strong>PALATE에 저장</strong>을 누르면 이 브라우저에서

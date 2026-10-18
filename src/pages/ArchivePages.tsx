@@ -1059,9 +1059,7 @@ export function Places({
             <>
               <div className="section-heading">
                 <h2>브랜드</h2>
-                <span className="section-count">
-                  {archive.brands.length}곳
-                </span>
+                <span className="section-count">{archive.brands.length}곳</span>
               </div>
               <div className="brand-list">
                 {archive.brands

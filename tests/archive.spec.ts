@@ -140,12 +140,7 @@ test("demo, navigation, search and narrow mobile viewport have no overflow", asy
     page.locator(".search-result-group").first().getByRole("link"),
   ).toHaveCount(2);
   await page.getByRole("button", { name: "닫기", exact: true }).click();
-  for (const label of [
-    "기록",
-    "장소",
-    "취향",
-    "컬렉션",
-  ]) {
+  for (const label of ["기록", "장소", "취향", "컬렉션"]) {
     await page
       .getByRole("navigation")
       .getByRole("link", { name: label })
