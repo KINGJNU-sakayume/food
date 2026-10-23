@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Download, Upload, ArrowUpRight } from "lucide-react";
 import type { Archive } from "../types/model";
 import { emptyArchive, today, validateArchive } from "../lib/data";
+import { assertPortable, withAllPhotos } from "../lib/photoStore";
 import { download } from "../lib/download";
 import { Modal } from "./Common";
 import { ShortcutGuide } from "./DiscoveryCommon";
@@ -34,7 +35,9 @@ export default function Settings({
     try {
       if (file.size > 20 * 1024 * 1024)
         throw new Error("20MB 이하의 JSON 파일을 선택해 주세요.");
-      setPending(validateArchive(JSON.parse(await file.text())));
+      const imported = validateArchive(JSON.parse(await file.text()));
+      assertPortable(imported);
+      setPending(imported);
     } catch (e) {
       setError(
         e instanceof SyntaxError
@@ -130,12 +133,18 @@ export default function Settings({
           </p>
           <button
             className="settings-action"
-            onClick={() =>
-              download(
-                `palate-${today()}.json`,
-                JSON.stringify(archive, null, 2),
-              )
-            }
+            onClick={async () => {
+              // 사진 원본을 모두 채운 아카이브만 내보낸다
+              try {
+                const full = await withAllPhotos(archive);
+                download(
+                  `palate-${today()}.json`,
+                  JSON.stringify(full, null, 2),
+                );
+              } catch (e) {
+                setError((e as Error).message);
+              }
+            }}
           >
             <Download size={18} />
             <span>

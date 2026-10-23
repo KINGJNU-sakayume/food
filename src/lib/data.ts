@@ -5,6 +5,7 @@ import type {
   Verdict,
 } from "../types/model.js";
 import { httpsUrl } from "./urls.js";
+import { dehydrate, PHOTO_REF_PATTERN } from "./photoStore.js";
 
 export const STORAGE_KEY = "palate.archive.v1";
 export const verdicts = {
@@ -425,9 +426,10 @@ export function validateArchive(input: unknown): Archive {
     if (
       !records.has(x.eating_record_id) ||
       !str(x.storage_path, 4000000) ||
-      !/^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(
-        x.storage_path,
-      ) ||
+      (!PHOTO_REF_PATTERN.test(x.storage_path) &&
+        !/^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(
+          x.storage_path,
+        )) ||
       !Number.isInteger(x.width) ||
       x.width <= 0 ||
       x.width > 1600 ||
@@ -510,7 +512,8 @@ export function persistArchive(
   a: Archive,
   storage: Pick<Storage, "setItem"> = localStorage,
 ) {
-  const data = JSON.stringify(a);
+  // IndexedDB에 저장된 사진은 참조(idb:<id>)로만 남긴다 (lib/photoStore.ts)
+  const data = JSON.stringify(dehydrate(a));
   try {
     storage.setItem(STORAGE_KEY, data);
   } catch {

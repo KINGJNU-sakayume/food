@@ -15,6 +15,7 @@ import {
   validateArchive,
 } from "../src/lib/data.js";
 import type { RecordDraft } from "../src/types/model.js";
+import { assertPortable, hydrate, photoKeys, photoRef } from "../src/lib/photoStore.js";
 const draft = (changes: Partial<RecordDraft> = {}): RecordDraft => ({
   menu_name: "싸이버거",
   brand_name: "맘스터치",
@@ -157,4 +158,33 @@ test("favourites derive from actual meals, may be overridden, and include recenc
   assert.equal(isFavourite(a, menuId), false);
   a.menus[0].favourite_override = true;
   assert.equal(isFavourite(a, menuId), true);
+});
+
+test("photos stored in IndexedDB are kept as idb:<key> references in localStorage", () => {
+  const a = saveRecord(
+    emptyArchive(),
+    draft({
+      photos: [
+        { storage_path: "data:image/webp;base64,AAAA", width: 1, height: 1 },
+      ],
+    }),
+  );
+  const photo = a.photos[0];
+  // A reference may point at the key the original was first stored under
+  const referenced = structuredClone(a);
+  referenced.photos[0].storage_path = photoRef("first-stored-id");
+  assert.equal(validateArchive(referenced).photos.length, 1);
+  assert.deepEqual([...photoKeys(referenced)], ["first-stored-id"]);
+  assert.deepEqual([...photoKeys(a)], [photo.id]);
+  const wrong = structuredClone(a);
+  wrong.photos[0].storage_path = "idb:../../etc";
+  assert.throws(() => validateArchive(wrong));
+  // Nothing has reached IndexedDB here, so saving keeps the photo inline
+  let stored = "";
+  persistArchive(a, { setItem: (_k: string, v: string) => (stored = v) });
+  assert.equal(JSON.parse(stored).photos[0].storage_path, photo.storage_path);
+  // Unknown references stay as they are; files carrying references are refused
+  assert.equal(hydrate(referenced), referenced);
+  assert.throws(() => assertPortable(referenced), /사진 원본/);
+  assert.doesNotThrow(() => assertPortable(a));
 });
