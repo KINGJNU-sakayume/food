@@ -30,7 +30,9 @@ import QuickAdd from "./components/QuickAdd";
 import Settings from "./components/Settings";
 import ChoosePage, { ReceiveShare } from "./pages/ChoosePage";
 import {
+  Collection,
   Insights,
+  Journal,
   MenuDetail,
   Places,
 } from "./pages/ArchivePages";
@@ -264,7 +266,7 @@ export default function App() {
       <main
         id="main-content"
         tabIndex={-1}
-        key={`${page}-${path[1] || ""}-${syncRevision}`}
+        key={`${path.join("/")}-${syncRevision}`}
       >
         {page === "collection" ? (
           <ArchiveV2
@@ -292,6 +294,10 @@ export default function App() {
           />
         ) : page === "journal" ? (
           <JournalV2 archive={archive} onAdd={add} />
+        ) : page === "legacy-collection" ? (
+          <Collection archive={archive} onAdd={add} onDemo={() => setDemoConfirm(true)} />
+        ) : page === "legacy-journal" ? (
+          <Journal archive={archive} onAdd={add} onEdit={edit} onDelete={setDeleting} />
         ) : page === "meal" ? (
           <MealV2 archive={archive} recordId={path[1]} onEdit={edit} onDelete={setDeleting} />
         ) : page === "dish" ? (
