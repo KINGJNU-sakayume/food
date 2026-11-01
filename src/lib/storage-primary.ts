@@ -264,8 +264,13 @@ export async function commitPrimary(fn: (archive: Archive) => Archive): Promise<
     const old = await reconstruct(manifest, photos);
     // The updater may be re-run in case of a concurrent edit in another tab.
     const next = validateArchive(fn(old));
-    if (!primaryEnabled()) throw new Error("저장 모드가 변경되었습니다.");
+    if (!primaryEnabled() || currentDatabase() !== database)
+      throw new Error("다른 탭에서 활성 저장소가 변경되었습니다. 새로고침해 주세요.");
     if (await compareAndSwap(manifest.revision, next, manifest.legacyDigest, old, database, manifest.legacyRawDigest)) {
+      if (currentDatabase() !== database) {
+        throw new Error("저장 중 활성 저장소가 바뀌었습니다. 이전 DB도 보존했으므로 기록을 확인해 주세요.");
+      }
+      await checkLegacy(manifest);
       return { archive: next, revision: manifest.revision + 1, savedAt: new Date().toISOString() };
     }
   }
