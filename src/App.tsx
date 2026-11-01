@@ -1,3 +1,4 @@
+import "./palate-v2.css";
 import { useEffect, useRef, useState } from "react";
 import {
   Search,
@@ -9,8 +10,6 @@ import {
   LayoutGrid,
   Compass,
   BookOpen,
-  MapPin,
-  BarChart3,
 } from "lucide-react";
 import type { Archive, EatingRecord } from "./types/model";
 import {
@@ -37,6 +36,7 @@ import {
   MenuDetail,
   Places,
 } from "./pages/ArchivePages";
+import { ArchiveV2, JournalV2, ChooseV2, PlaceV2, DishV2, MealV2 } from "./pages/PalateV2";
 
 function load() {
   let raw: string | undefined;
@@ -210,16 +210,15 @@ export default function App() {
         <nav aria-label="주 메뉴" className="main-nav">
           {(
             [
-              ["collection", "컬렉션", LayoutGrid],
+              ["collection", "아카이브", LayoutGrid],
+              ["journal", "일기", BookOpen],
               ["choose", "고르기", Compass],
-              ["journal", "기록", BookOpen],
-              ["places", "장소", MapPin],
-              ["insights", "취향", BarChart3],
             ] as const
           ).map(([key, label, Icon]) => {
             const active =
               page === key ||
-              (page === "menu" && key === "collection") ||
+              (["menu", "dish", "place-v2"].includes(page) && key === "collection") ||
+              (page === "meal" && key === "journal") ||
               (page === "receive" && key === "choose");
             return (
               <a
@@ -267,14 +266,16 @@ export default function App() {
       <main
         id="main-content"
         tabIndex={-1}
-        key={`${page}-${path[1] || ""}-${syncRevision}`}
+        key={`${path.join("/")}-${syncRevision}`}
       >
         {page === "collection" ? (
-          <Collection
+          <ArchiveV2
             archive={archive}
             onAdd={add}
             onDemo={() => setDemoConfirm(true)}
           />
+        ) : page === "choose" && !path[1] ? (
+          <ChooseV2 archive={archive} />
         ) : page === "choose" ? (
           <ChoosePage
             archive={archive}
@@ -292,12 +293,17 @@ export default function App() {
             blocked={!!recovery}
           />
         ) : page === "journal" ? (
-          <Journal
-            archive={archive}
-            onAdd={add}
-            onEdit={edit}
-            onDelete={setDeleting}
-          />
+          <JournalV2 archive={archive} onAdd={add} />
+        ) : page === "legacy-collection" ? (
+          <Collection archive={archive} onAdd={add} onDemo={() => setDemoConfirm(true)} />
+        ) : page === "legacy-journal" ? (
+          <Journal archive={archive} onAdd={add} onEdit={edit} onDelete={setDeleting} />
+        ) : page === "meal" ? (
+          <MealV2 archive={archive} recordId={path[1]} onEdit={edit} onDelete={setDeleting} />
+        ) : page === "dish" ? (
+          <DishV2 archive={archive} menuId={path[1]} placeId={path[2]} onAdd={add} onSave={commit} />
+        ) : page === "place-v2" ? (
+          <PlaceV2 archive={archive} id={path[1]} onAdd={add} />
         ) : page === "places" ? (
           <Places
             archive={archive}

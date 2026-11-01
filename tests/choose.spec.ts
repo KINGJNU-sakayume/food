@@ -40,13 +40,13 @@ test("choose a franchise, compare experience and consume a menu wish after eatin
   ).toHaveAttribute("aria-pressed", "true");
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("link", { name: "컬렉션", exact: true })
+    .getByRole("link", { name: "아카이브", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "첫 식사 기록하기" }),
   ).toBeVisible();
-  await expect(page.locator(".menu-tile")).toHaveCount(0);
-  await page.goto("/#/choose");
+  await expect(page.locator(".p2-card")).toHaveCount(0);
+  await page.goto("/#/choose/places");
   await page.getByRole("heading", { name: "맘스터치", exact: true }).click();
   await burger.getByRole("button", { name: "먹었다", exact: true }).click();
   const form = page.getByRole("dialog");
@@ -70,9 +70,9 @@ test("choose a franchise, compare experience and consume a menu wish after eatin
   ).toHaveAttribute("aria-pressed", "true");
   await page
     .getByRole("navigation", { name: "주 메뉴" })
-    .getByRole("link", { name: "컬렉션", exact: true })
+    .getByRole("link", { name: "아카이브", exact: true })
     .click();
-  await expect(page.locator(".menu-tile")).toHaveCount(1);
+  await expect(page.locator(".p2-card")).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 test("iPhone shortcut receiver deduplicates links and multi-target organisation survives reload and backup", async ({
@@ -168,7 +168,7 @@ test("restaurant name search is explicit and saves the selected real provider re
       },
     });
   });
-  await page.goto("/#/choose");
+  await page.goto("/#/choose/places");
   await page.getByRole("button", { name: "음식점 추가", exact: true }).click();
   await page.getByLabel("음식점 이름과 지역").fill("테스트 식당 서울");
   expect(calls).toBe(0);
@@ -216,7 +216,7 @@ test("configured menu lookup imports real response items and preserves them when
       });
     },
   );
-  await page.goto("/#/choose");
+  await page.goto("/#/choose/places");
   await page.getByRole("button", { name: "음식점 추가", exact: true }).click();
   await page
     .getByRole("button", { name: "링크 가져오기", exact: true })
@@ -417,7 +417,7 @@ test("a menu-only service falls back to the default name search when Naver crede
       },
     }),
   );
-  await page.goto("/#/choose");
+  await page.goto("/#/choose/places");
   await page.getByRole("button", { name: "음식점 추가", exact: true }).click();
   await page.getByLabel("음식점 이름과 지역").fill("기본 검색 식당");
   await page

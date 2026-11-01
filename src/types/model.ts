@@ -55,6 +55,9 @@ export interface MenuOffering extends Owned {
   price?: number;
   currency: string;
   available: boolean;
+  /** Optional collection-only reference image, never presented as a meal photo. */
+  reference_image_url?: string;
+  reference_image_credit?: string;
 }
 export interface EatingRecord extends Owned {
   menu_id: string;

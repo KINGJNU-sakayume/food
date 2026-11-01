@@ -158,3 +158,38 @@ test("favourites derive from actual meals, may be overridden, and include recenc
   a.menus[0].favourite_override = true;
   assert.equal(isFavourite(a, menuId), true);
 });
+
+test("collection reference image is optional, credited and rejects unsafe URLs", () => {
+  let a = saveRecord(emptyArchive(), draft());
+  const menuId = a.menus[0].id;
+  const placeId = a.places[0].id;
+  a.offerings[0].reference_image_url = "https://example.com/ramen.jpg";
+  a.offerings[0].reference_image_credit = "가게 공식 이미지";
+  assert.equal(validateArchive(a).offerings[0].reference_image_credit, "가게 공식 이미지");
+  assert.equal(a.records[0].menu_id, menuId);
+  assert.equal(a.records[0].place_id, placeId);
+  const bad = structuredClone(a);
+  bad.offerings[0].reference_image_url = "javascript:alert(1)";
+  assert.throws(() => validateArchive(bad));
+  const huge = structuredClone(a);
+  huge.offerings[0].reference_image_credit = "x".repeat(201);
+  assert.throws(() => validateArchive(huge));
+});
+test("different venues keep their own meal verdicts even with one shared menu", () => {
+  let a = saveRecord(emptyArchive(), draft());
+  const first = a.records[0];
+  a = saveRecord(a, draft({
+    menu_id: first.menu_id,
+    place_name: "강남점",
+    address: "서울 강남구",
+    verdict: "DISLIKE",
+    eaten_at: "2026-10-19",
+  }));
+  assert.equal(a.menus.length, 1);
+  assert.equal(a.records.length, 2);
+  assert.notEqual(a.records[0].place_id, a.records[1].place_id);
+  const atFirst = a.records.filter(r => r.menu_id === first.menu_id && r.place_id === first.place_id);
+  assert.equal(atFirst.length, 1);
+  assert.equal(preference(atFirst), "LIKE");
+  assert.equal(preference(a.records.filter(r => r.menu_id === first.menu_id && r.place_id === a.records[1].place_id)), "DISLIKE");
+});
