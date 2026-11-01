@@ -512,10 +512,10 @@ export function validateArchive(input: unknown): Archive {
           receiptKeys.has(receipt.key) ||
           !["meal", "wish"].includes(String(receipt.entity_type)) ||
           !str(receipt.entity_id, 100) ||
-          !timestamp(receipt.approved_at) ||
-          (receipt.entity_type === "meal"
-            ? !records.has(receipt.entity_id)
-            : !a.wishes.some(w => w.id === receipt.entity_id))) return fail();
+          !receipt.entity_id ||
+          // Keep historical receipts even when a user later deletes the meal.
+          // Otherwise re-sent candidates could recreate intentionally deleted records.
+          !timestamp(receipt.approved_at)) return fail();
       receiptKeys.add(receipt.key);
     }
   }
