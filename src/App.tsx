@@ -37,6 +37,7 @@ import {
   Places,
 } from "./pages/ArchivePages";
 import { ArchiveV2, JournalV2, ChooseV2, PlaceV2, DishV2, MealV2 } from "./pages/PalateV2";
+import { activatePrimary, commitPrimary, primaryEnabled, PRIMARY_MODE_KEY, readPrimary } from "./lib/storage-primary";
 
 function load() {
   let raw: string | undefined;
@@ -59,6 +60,8 @@ function load() {
 export default function App() {
   const [boot] = useState(load),
     [archive, setArchive] = useState(boot.archive),
+    [primaryMode, setPrimaryMode] = useState(primaryEnabled),
+    [storageReady, setStorageReady] = useState(!primaryEnabled()),
     [recovery, setRecovery] = useState(boot.error),
     [corruptRaw, setCorruptRaw] = useState(boot.raw),
     [route, setRoute] = useState(location.hash || "#/collection"),
@@ -79,6 +82,7 @@ export default function App() {
     [demoLoading, setDemoLoading] = useState(false),
     [restore, setRestore] = useState<Archive>();
   const archiveRef = useRef(archive),
+    broadcasts = useRef<BroadcastChannel | null>(null),
     timer = useRef<ReturnType<typeof setTimeout>>();
   const notify = (message: string) => {
     setToast(message);
@@ -95,7 +99,42 @@ export default function App() {
     return () => window.removeEventListener("hashchange", change);
   }, []);
   useEffect(() => {
+    if (!primaryMode) return;
+    let cancelled = false;
+    void readPrimary().then(({ archive: fresh }) => {
+      if (cancelled) return;
+      archiveRef.current = fresh;
+      setArchive(fresh);
+      setRecovery("");
+    }).catch((e) => {
+      if (!cancelled) setRecovery("IndexedDB 읽기·무결성 검사 실패: " + (e as Error).message);
+    }).finally(() => { if (!cancelled) setStorageReady(true); });
+    return () => { cancelled = true; };
+  }, [primaryMode]);
+  useEffect(() => {
+    if (!primaryMode || typeof BroadcastChannel === "undefined") return;
+    const bc = new BroadcastChannel("palate-primary-notify");
+    broadcasts.current = bc;
+    bc.onmessage = () => {
+      void readPrimary().then(({ archive: fresh }) => {
+        archiveRef.current = fresh;
+        setArchive(fresh);
+        setSyncRevision(v => v + 1);
+        notify("다른 탭의 변경된 기록을 불러왔습니다.");
+      }).catch((e) => setRecovery("저장소 변경을 확인하지 못했습니다: " + (e as Error).message));
+    };
+    return () => { bc.close(); broadcasts.current = null; };
+  }, [primaryMode]);
+  useEffect(() => {
     const sync = (event: StorageEvent) => {
+      if (event.key === PRIMARY_MODE_KEY) {
+        setRecovery("다른 탭에서 저장 방식이 변경되었습니다. 페이지를 새로고침해 주세요.");
+        return;
+      }
+      if (primaryEnabled() && (event.key === STORAGE_KEY || event.key === null)) {
+        setRecovery("기존 로컬 원본이 다른 탭에서 변경됐습니다. 자동 저장을 중단했습니다.");
+        return;
+      }
       if (event.key !== STORAGE_KEY && event.key !== null) return;
       try {
         const a = event.newValue
@@ -123,12 +162,22 @@ export default function App() {
       clearTimeout(timer.current);
     };
   }, []);
-  function commit(
+  async function commit(
     fn: (a: Archive) => Archive,
     message: string | false = "아카이브에 저장했습니다.",
-  ): boolean {
+  ): Promise<boolean> {
     try {
-      if (recovery) throw new Error("먼저 아카이브 복구를 완료해 주세요.");
+      if (!storageReady || recovery) throw new Error("먼저 아카이브 복구·불러오기를 완료해 주세요.");
+      if (primaryMode) {
+        const saved = await commitPrimary(fn);
+        archiveRef.current = saved.archive;
+        setArchive(saved.archive);
+        broadcasts.current?.postMessage({ revision: saved.revision });
+        setError("");
+        if (message) notify(message);
+        return true;
+      }
+      if (primaryEnabled()) throw new Error("저장 방식이 전환됐습니다. 새로고침해 주세요.");
       // Read the latest saved value before applying an incoming share or edit.
       // Another tab may have saved a link before its storage event arrives.
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -147,8 +196,10 @@ export default function App() {
       return false;
     }
   }
-  function recover(next: Archive) {
+  async function recover(next: Archive) {
     try {
+      if (primaryMode) throw new Error("IndexedDB 복구에는 별도 확인 절차가 필요합니다. 기존 원본을 덮어쓰지 않았습니다.");
+      if (primaryEnabled()) throw new Error("저장 방식이 변경되었습니다. 새로고침해 주세요.");
       persistArchive(next);
       archiveRef.current = next;
       setArchive(next);
