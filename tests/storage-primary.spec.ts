@@ -93,3 +93,49 @@ test("P2-B notices changed frozen legacy source and blocks subsequent writes", a
   await expect(page.getByText(/IndexedDB 읽기·무결성 검사 실패/)).toBeVisible();
   expect(await page.evaluate(key => localStorage.getItem(key), KEY)).toContain("invalid");
 });
+
+test("P2-B syncs changes between active tabs without rewriting legacy storage", async ({ page, context }) => {
+  await page.goto("/");
+  await addMeal(page, "초기 메뉴");
+  const frozen = await page.evaluate(key => localStorage.getItem(key), KEY);
+  await activate(page);
+  const other = await context.newPage();
+  await other.goto("/");
+  await expect(other.locator(".p2-card")).toHaveCount(1);
+  await addMeal(other, "다른 탭에서 추가한 메뉴");
+  await expect(page.locator(".p2-card")).toHaveCount(2);
+  await expect(page.locator(".p2-card").filter({ hasText: "다른 탭에서 추가한 메뉴" })).toHaveCount(1);
+  expect(await page.evaluate(key => localStorage.getItem(key), KEY)).toBe(frozen);
+  await other.close();
+});
+
+test("P2-B deletes edited photo blobs from active storage but keeps original rollback JSON", async ({ page }) => {
+  await page.goto("/");
+  await addMeal(page, "사진 수정용 국수");
+  await activate(page);
+  await addMeal(page, "사진 있는 덮밥", true);
+  await page.goto("/#/journal");
+  await page.locator(".p2-journal-entry").filter({hasText:"사진 있는 덮밥"}).getByRole("link").click();
+  await page.getByRole("button", { name: "기록 수정" }).click();
+  const edit = page.getByRole("dialog");
+  await edit.getByRole("button", { name: "사진 1 제거" }).click();
+  await edit.getByRole("button", { name: "변경 저장" }).click();
+  await expect(edit).toHaveCount(0);
+  await page.reload();
+  await page.goto("/#/journal");
+  await expect(page.locator(".p2-journal-cover")).toHaveCount(0);
+  const photoCount = await page.evaluate(async () => {
+    const req = indexedDB.open("palate-storage-primary-v1");
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
+    });
+    try {
+      const tx = db.transaction("photos", "readonly");
+      const count = tx.objectStore("photos").count();
+      return await new Promise<number>((resolve,reject) => {
+        count.onsuccess = () => resolve(count.result); count.onerror = () => reject(count.error);
+      });
+    } finally { db.close(); }
+  });
+  expect(photoCount).toBe(0);
+});
