@@ -15,7 +15,18 @@ test("manual P2 staging keeps the original archive, moves photos to Blob, and ve
   await dialog.locator("input[type=file]").setInputFiles({
     name: "one.png",
     mimeType: "image/png",
-    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO1B3LkAAAAASUVORK5CYII=", "base64"),
+    buffer: Buffer.from(
+      await page.evaluate(() => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 64;
+        canvas.height = 48;
+        const ctx = canvas.getContext("2d")!;
+        ctx.fillStyle = "#d4b898";
+        ctx.fillRect(0, 0, 64, 48);
+        return canvas.toDataURL("image/png").split(",")[1];
+      }),
+      "base64",
+    ),
   });
   await expect(dialog.getByAltText("첨부 사진 1")).toBeVisible();
   await dialog.getByRole("button", { name: "기억 저장하기" }).click();
