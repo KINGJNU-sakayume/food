@@ -211,6 +211,22 @@ export default function App() {
       setError((e as Error).message);
     }
   }
+  async function enablePrimary() {
+    if (!storageReady || recovery) return false;
+    try {
+      const ready = await activatePrimary();
+      archiveRef.current = ready.archive;
+      setArchive(ready.archive);
+      setPrimaryMode(true);
+      setStorageReady(true);
+      setError("");
+      notify("IndexedDB 전환 완료. 기존 localStorage 원본은 그대로 보존했습니다.");
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    }
+  }
   const routeUrl = new URL(
     route.replace(/^#/, "") || "/collection",
     "https://palate.local",
@@ -242,6 +258,7 @@ export default function App() {
         normalize(query),
       ),
   );
+  if (!storageReady) return <div className="app"><main role="status">개인 아카이브 저장소를 확인하고 있습니다…</main></div>;
   return (
     <div className="app">
       <a
@@ -424,6 +441,8 @@ export default function App() {
           onClose={() => setSettings(false)}
           onSave={commit}
           corruptRaw={corruptRaw}
+          primaryMode={primaryMode}
+          onActivatePrimary={enablePrimary}
         />
       )}
       {search && (
@@ -544,7 +563,7 @@ export default function App() {
                   setDemoLoading(true);
                   try {
                     const sample = await loadDemo();
-                    if (commit(() => sample)) setDemoConfirm(false);
+                    if (await commit(() => sample)) setDemoConfirm(false);
                   } catch (e) {
                     setError((e as Error).message);
                   } finally {
@@ -578,8 +597,8 @@ export default function App() {
             <div className="button-row">
               <button
                 className="danger-button"
-                onClick={() => {
-                  if (commit((a) => removeRecord(a, deleting.id)))
+                onClick={async () => {
+                  if (await commit((a) => removeRecord(a, deleting.id)))
                     setDeleting(undefined);
                 }}
               >
@@ -606,8 +625,8 @@ export default function App() {
             <div className="button-row">
               <button
                 className="danger-button"
-                onClick={() => {
-                  if (commit((a) => removePlace(a, deletingPlace))) {
+                onClick={async () => {
+                  if (await commit((a) => removePlace(a, deletingPlace))) {
                     setDeletingPlace(undefined);
                     location.hash = "/places";
                   }
