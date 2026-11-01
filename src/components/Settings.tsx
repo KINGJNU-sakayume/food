@@ -66,8 +66,8 @@ export default function Settings({
     setError("");
     setPending(undefined);
     try {
-      if (file.size > 20 * 1024 * 1024)
-        throw new Error("20MB 이하의 JSON 파일을 선택해 주세요.");
+      if (file.size > (primaryMode ? 100 : 20) * 1024 * 1024)
+        throw new Error((primaryMode ? "100MB" : "20MB") + " 이하의 JSON 파일을 선택해 주세요.");
       setPending(validateArchive(JSON.parse(await file.text())));
     } catch (e) {
       setError(
@@ -204,6 +204,7 @@ export default function Settings({
         </div>
         <div className="settings-section">
           <h3>P2 · 새 저장 구조 사전 점검</h3>
+          {primaryMode && <p className="micro">현재 IndexedDB가 기본 저장소입니다. 오래된 로컬 원본으로 검증 사본을 다시 만드는 작업은 차단했습니다.</p>}
           <p className="muted">
             현재 기록을 변경하지 않고 IndexedDB에 검사용 사본을 만듭니다.
             사진은 이미지 데이터로 분리하여 저장하고, 원본과 모든 필드·사진이
@@ -216,7 +217,7 @@ export default function Settings({
           </p>
           <button
             className="settings-action"
-            disabled={staging}
+            disabled={staging || primaryMode}
             onClick={() => { void makeStagingCopy(); }}
           >
             <span>{staging ? "사본 생성·검증 중…" : "IndexedDB 사본 생성 및 무결성 검사"}</span>
@@ -224,7 +225,7 @@ export default function Settings({
           </button>
           <button
             className="text-button"
-            disabled={staging}
+            disabled={staging || primaryMode}
             onClick={() => { void verifyExistingCopy(); }}
           >
             기존 사본만 다시 검증 <ArrowUpRight size={16} />
