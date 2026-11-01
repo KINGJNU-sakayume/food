@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, BookOpen, Bookmark, Camera, ChevronLeft, ChevronRight, Compass, Heart, Image as ImageIcon, MapPin, Plus, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Bookmark, ChevronLeft, ChevronRight, Heart, MapPin, Plus, Search, SlidersHorizontal } from "lucide-react";
 import type { Archive, EatingRecord, Menu, Place, Verdict } from "../types/model";
 import { normalize, preference, reorders, verdicts } from "../lib/data";
 import { dateLabel, Empty, Modal, VerdictLabel } from "../components/Common";
-import { isWanted } from "../lib/discovery";
 
 type Add = (menuId?: string, placeId?: string) => void;
 type Save = (fn: (a: Archive) => Archive, message?: string | false) => boolean;
