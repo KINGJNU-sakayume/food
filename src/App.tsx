@@ -714,8 +714,10 @@ export default function App() {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   try {
-                    if (file.size > 20 * 1024 * 1024)
-                      throw new Error("20MB 이하 파일을 선택해 주세요.");
+                    setRecoveryConfirmed(false);
+                    const maximum = primaryMode ? 100 : 20;
+                    if (file.size > maximum * 1024 * 1024)
+                      throw new Error(maximum + "MB 이하 파일을 선택해 주세요.");
                     setRestore(validateArchive(JSON.parse(await file.text())));
                     setError("");
                   } catch {
