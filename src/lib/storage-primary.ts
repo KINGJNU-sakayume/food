@@ -201,12 +201,17 @@ export async function activatePrimary(): Promise<PrimarySnapshot> {
   } finally {
     db.close();
   }
-  const ready = await readPrimary();
+  // Verification precedes the mode flag: readPrimary() requires an active mode.
+  const verified = await openSnapshot(PRIMARY_DB_NAME);
+  const exact = await reconstruct(verified.manifest, verified.photos);
+  if (await digest(exact) !== originalDigest || JSON.stringify(exact) !== JSON.stringify(original))
+    throw new Error("새 저장소의 사본이 원본과 일치하지 않습니다. 전환을 중지했습니다.");
   // Do not enable a stale snapshot if another tab wrote the old key meanwhile.
-  if (await digest(legacyArchive()) !== originalDigest)
-    throw new Error("전환 과정에서 기존 원본이 변경되었습니다. 다른 탭을 닫고 검증을 다시 진행해 주세요.");
+  if (await digest(legacyArchive()) !== originalDigest ||
+      localStorage.getItem(PRIMARY_MODE_KEY) !== null)
+    throw new Error("전환 과정에서 기존 원본 또는 저장 모드가 변경되었습니다. 다른 탭을 닫고 다시 확인해 주세요.");
   localStorage.setItem(PRIMARY_MODE_KEY, "on");
-  return ready;
+  return { archive: exact, revision: verified.manifest.revision, savedAt: verified.manifest.savedAt };
 }
 /** IDB transaction does CAS against revision, never LWW. */
 async function compareAndSwap(
