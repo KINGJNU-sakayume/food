@@ -141,7 +141,10 @@ export function JournalV2({ archive, onAdd }: { archive: Archive; onAdd: Add }) 
   );
 }
 export function ChooseV2({ archive }: { archive: Archive }) {
+  const [compared, setCompared] = useState<string[]>([]);
   const saved = groups(archive).filter(g => g.records[0].reorder_intent === "YES");
+  const selectedGroups = saved.filter(g => compared.includes(g.key));
+  const toggleCompare = (key: string) => setCompared(items => items.includes(key) ? items.filter(x => x !== key) : items.length < 3 ? [...items, key] : items);
   const wishes = archive.wishes.map(w => {
     const title = w.target_type === "MENU" ? archive.menus.find(m => m.id === w.target_id)?.name :
       w.target_type === "BRAND" ? archive.brands.find(b => b.id === w.target_id)?.name :
@@ -153,7 +156,8 @@ export function ChooseV2({ archive }: { archive: Archive }) {
     <Title eyebrow="WHAT TO EAT NEXT" title="오늘, 뭐 먹지?" caption="이미 먹어본 메뉴와 저장해둔 발견을 바탕으로 고릅니다."/>
     <div className="p2-choose-quick"><a href="#/choose/places"><MapPin size={19}/> 내 음식점 둘러보기 <ArrowRight size={16}/></a><a href="#/choose/franchises"><BookOpen size={19}/> 프랜차이즈 메뉴 찾기 <ArrowRight size={16}/></a><a href="#/choose/reels"><Bookmark size={19}/> 릴스·저장 링크 ({archive.saved_links.length}) <ArrowRight size={16}/></a></div>
     <div className="p2-section-head"><h2>다시 먹고 싶은 메뉴</h2><span>{saved.length}개</span></div>
-    {saved.length ? <div className="p2-choose-list">{saved.slice(0, 8).map(g => <a key={g.key} href={groupHref(g)} className="p2-choose-item"><GroupCover archive={archive} group={g}/><div><strong>{g.menu.name}</strong><span>{placeName(g, archive)}</span><small>{dateLabel(g.records[0].eaten_at)} · 다시 먹는다</small></div><ChevronRight size={18}/></a>)}</div> : <p className="p2-muted">재주문 의사를 ‘다시 먹는다’로 남긴 메뉴가 여기에 모입니다.</p>}
+    {saved.length ? <div className="p2-choose-list">{saved.slice(0, 8).map(g => <div key={g.key} className="p2-compare-candidate"><a href={groupHref(g)} className="p2-choose-item"><GroupCover archive={archive} group={g}/><div><strong>{g.menu.name}</strong><span>{placeName(g, archive)}</span><small>{dateLabel(g.records[0].eaten_at)} · 다시 먹는다</small></div><ChevronRight size={18}/></a><button type="button" className={compared.includes(g.key) ? "p2-compare-selected" : ""} aria-pressed={compared.includes(g.key)} disabled={!compared.includes(g.key) && compared.length >= 3} onClick={() => toggleCompare(g.key)}>{compared.includes(g.key) ? "비교에서 제외" : "비교에 담기"}</button></div>)}</div> : <p className="p2-muted">재주문 의사를 ‘다시 먹는다’로 남긴 메뉴가 여기에 모입니다.</p>}
+    {!!selectedGroups.length && <div className="p2-compare-panel"><div className="p2-section-head"><h2>지금 고민하는 메뉴</h2><button onClick={() => setCompared([])}>초기화</button></div><div className="p2-compare-grid">{selectedGroups.map(g => <a href={groupHref(g)} key={g.key}><strong>{g.menu.name}</strong><span>{placeName(g, archive)}</span><VerdictLabel value={preference(g.records) || g.records[0].verdict}/><p>{g.records[0].short_note || "지난 식사 메모 없음"}</p></a>)}</div><p className="p2-muted">최대 3개 · 지난 경험을 바탕으로 비교하며 자동 추천 순위는 만들지 않습니다.</p></div>}
     <div className="p2-section-head"><h2>먹고 싶은 것과 가고 싶은 곳</h2><span>{wishes.length}개</span></div>
     {wishes.length ? <div className="p2-choose-list">{wishes.slice(0, 12).map(w => <a key={w.key} href={w.href} className="p2-choose-item p2-wish-item"><Heart size={19}/><div><strong>{w.title}</strong><span>{w.type === "MENU" ? "관심 메뉴" : w.type === "PLACE" ? "방문하고 싶은 장소" : "관심 브랜드"}</span></div><ChevronRight size={18}/></a>)}</div> : <p className="p2-muted">관심 메뉴나 가게를 저장하면 여기에 나타납니다.</p>}
     <div className="p2-section-head"><h2>나중에 찾아볼 발견</h2><a href="#/choose/reels">전체 보기 <ArrowRight size={16}/></a></div>
@@ -183,7 +187,7 @@ export function DishV2({ archive, menuId, placeId, onAdd, onSave }: { archive: A
   const other = groups(archive).filter(g => g.menu.id === menuId && g.placeId !== placeId);
   const saveReference = () => {
     const url = reference.trim();
-    if (url && !/^https:\/\//i.test(url)) return;
+    if (url && (!/^https:\/\//i.test(url) || !credit.trim())) return;
     const ok = onSave(a => {
       const next = structuredClone(a);
       let o = next.offerings.find(o => o.menu_id === menuId && o.place_id === placeId);
@@ -207,7 +211,7 @@ export function DishV2({ archive, menuId, placeId, onAdd, onSave }: { archive: A
         <p className="p2-muted">{group.menu.category || "나의 메뉴"} · {group.records.length}번 먹음</p>
         <div className="p2-dish-summary">{v ? <VerdictLabel value={v}/> : null}<span>최근 기록 {dateLabel(latest.eaten_at)}</span></div>
         <div className="p2-actions"><button className="primary" onClick={() => onAdd(menuId, group.place?.id)}><Plus size={17}/> 다시 먹은 기록</button><a className="p2-quiet-btn" href={"#/menu/" + menuId}>메뉴 정보 수정 <ArrowRight size={16}/></a></div>
-        {group.place && <details className="p2-ref-editor" open={editing} onToggle={e => setEditing(e.currentTarget.open)}><summary>컬렉션 참고 이미지 관리</summary><p>직접 촬영한 사진이 없을 때만 컬렉션에 표시됩니다. 일기에는 나타나지 않습니다.</p><label>이미지 HTTPS 주소<input type="url" value={reference} onChange={e => setReference(e.target.value)} placeholder="https://..."/></label><label>이미지 출처<input value={credit} maxLength={200} onChange={e => setCredit(e.target.value)} placeholder="출처 또는 저작자"/></label><button className="p2-quiet-btn" onClick={saveReference} disabled={!!reference && !/^https:\/\//i.test(reference)}>참고 이미지 저장</button></details>}
+        {group.place && <details className="p2-ref-editor" open={editing} onToggle={e => setEditing(e.currentTarget.open)}><summary>컬렉션 참고 이미지 관리</summary><p>직접 촬영한 사진이 없을 때만 컬렉션에 표시됩니다. 일기에는 나타나지 않습니다.</p><label>이미지 HTTPS 주소<input type="url" value={reference} onChange={e => setReference(e.target.value)} placeholder="https://..."/></label><label>이미지 출처 (필수)<input value={credit} maxLength={200} onChange={e => setCredit(e.target.value)} placeholder="출처 또는 저작자"/></label><button className="p2-quiet-btn" onClick={saveReference} disabled={!!reference && (!/^https:\/\//i.test(reference) || !credit.trim())}>참고 이미지 저장</button></details>}
       </div>
     </div>
     <div className="p2-section-head"><h2>이 메뉴의 식사 연대기</h2><span>{group.records.length}번</span></div>
