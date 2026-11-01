@@ -725,24 +725,45 @@ export default function App() {
               />
             </label>
             {restore && (
-              <button className="primary" onClick={() => recover(restore)}>
-                식사 {restore.records.length}건의 백업으로 복원
+              <div className="inline-notice">
+                <p>
+                  선택한 백업: <strong>{restore.user.display_name}</strong> ·
+                  식사 {restore.records.length}건 · 사진 {restore.photos.length}장
+                </p>
+                {primaryMode && (
+                  <>
+                    <p className="micro">
+                      백업을 새로운 IndexedDB에 기록하고 검증한 뒤 활성 저장소를 변경합니다.
+                      이전 IndexedDB와 기존 localStorage 원본은 삭제하지 않습니다.
+                      복구 후에는 선택한 백업에 포함된 기록만 화면에 나타납니다.
+                    </p>
+                    <label className="field">
+                      <span>
+                        <input type="checkbox" checked={recoveryConfirmed}
+                          onChange={e => setRecoveryConfirmed(e.target.checked)} />
+                        기존 기록과 원본을 따로 보관했고, 선택한 백업으로 전환하는 데 동의합니다.
+                      </span>
+                    </label>
+                  </>
+                )}
+                <button className="primary" disabled={primaryMode && !recoveryConfirmed}
+                  onClick={() => { void recover(restore); }}>
+                  식사 {restore.records.length}건의 백업으로 {primaryMode ? "새 저장소에 복구" : "복원"}
+                </button>
+              </div>
+            )
+            {!primaryMode && (
+              <button
+                className="text-button danger"
+                onClick={() => {
+                  if (corruptRaw)
+                    download("palate-recovery-" + today() + ".txt", corruptRaw, "text/plain");
+                  void recover(emptyArchive());
+                }}
+              >
+                원본을 내려받고 새로 시작
               </button>
             )}
-            <button
-              className="text-button danger"
-              onClick={() => {
-                if (corruptRaw)
-                  download(
-                    `palate-recovery-${today()}.txt`,
-                    corruptRaw,
-                    "text/plain",
-                  );
-                recover(emptyArchive());
-              }}
-            >
-              원본을 내려받고 새로 시작
-            </button>
             <p className="micro">원본은 선택 전까지 덮어쓰지 않습니다.</p>
           </div>
         </Modal>
