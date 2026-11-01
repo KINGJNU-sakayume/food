@@ -15,7 +15,7 @@ import { Modal } from "./Common";
 export type Commit = (
   fn: (a: Archive) => Archive,
   message?: string | false,
-) => boolean;
+) => Promise<boolean>;
 export function WantButton({
   archive,
   type,
@@ -66,11 +66,11 @@ export function PasteLink({
     <Modal title="SAVE A DISCOVERY" onClose={onClose}>
       <form
         className="quick-form"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
           try {
             const url = sharedUrl(text);
-            if (onSave((a) => saveSharedLink(a, url, title).archive)) onClose();
+            if (await onSave((a) => saveSharedLink(a, url, title).archive)) onClose();
           } catch (e) {
             setError((e as Error).message);
           }
@@ -153,9 +153,9 @@ export function LinkEditor({
     <Modal title="ORGANISE A DISCOVERY" onClose={onClose}>
       <form
         className="quick-form"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
-          if (onSave((a) => updateSavedLink(a, link.id, title, note, targets)))
+          if (await onSave((a) => updateSavedLink(a, link.id, title, note, targets)))
             onClose();
         }}
       >
