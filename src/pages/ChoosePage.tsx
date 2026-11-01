@@ -695,10 +695,10 @@ function VenueDetail({
       {adding && (
         <form
           className="add-menu-form"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             if (
-              onSave(
+              await onSave(
                 (a) => addMenuToVenue(a, target, menuName, category).archive,
               )
             ) {
