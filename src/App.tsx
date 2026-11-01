@@ -37,7 +37,7 @@ import {
   Places,
 } from "./pages/ArchivePages";
 import { ArchiveV2, JournalV2, ChooseV2, PlaceV2, DishV2, MealV2 } from "./pages/PalateV2";
-import { activatePrimary, commitPrimary, primaryEnabled, PRIMARY_MODE_KEY, readPrimary } from "./lib/storage-primary";
+import { activatePrimary, commitPrimary, primaryEnabled, PRIMARY_MODE_KEY, readPrimary, readPrimaryForRescue, restorePrimaryAsNewDatabase } from "./lib/storage-primary";
 
 function load() {
   let raw: string | undefined;
@@ -80,7 +80,10 @@ export default function App() {
     [deletingPlace, setDeletingPlace] = useState<string>(),
     [demoConfirm, setDemoConfirm] = useState(false),
     [demoLoading, setDemoLoading] = useState(false),
-    [restore, setRestore] = useState<Archive>();
+    [restore, setRestore] = useState<Archive>(),
+    [recoveryConfirmed, setRecoveryConfirmed] = useState(false),
+    [rescueBusy, setRescueBusy] = useState(false),
+    [rescueError, setRescueError] = useState("");
   const archiveRef = useRef(archive),
     broadcasts = useRef<BroadcastChannel | null>(null),
     timer = useRef<ReturnType<typeof setTimeout>>();
@@ -198,7 +201,21 @@ export default function App() {
   }
   async function recover(next: Archive) {
     try {
-      if (primaryMode) throw new Error("IndexedDB 복구에는 별도 확인 절차가 필요합니다. 기존 원본을 덮어쓰지 않았습니다.");
+      if (primaryMode) {
+        if (!recoveryConfirmed) throw new Error("복구 전 백업 보관 확인이 필요합니다.");
+        const result = await restorePrimaryAsNewDatabase(next);
+        archiveRef.current = result.archive;
+        setArchive(result.archive);
+        setRecovery("");
+        setCorruptRaw(undefined);
+        setRestore(undefined);
+        setRecoveryConfirmed(false);
+        setRescueError("");
+        setError("");
+        broadcasts.current?.postMessage({ revision: result.revision });
+        notify("별도의 IndexedDB에 백업을 검증하고 복구했습니다. 기존 데이터는 삭제하지 않았습니다.");
+        return;
+      }
       if (primaryEnabled()) throw new Error("저장 방식이 변경되었습니다. 새로고침해 주세요.");
       persistArchive(next);
       archiveRef.current = next;
@@ -649,20 +666,44 @@ export default function App() {
           <div className="confirm-content">
             <h2>기록을 먼저 보관해 주세요.</h2>
             <p>{recovery}</p>
-            {corruptRaw && (
+            <p className="micro">
+              {primaryMode
+                ? "IndexedDB 활성 상태입니다. 오래된 localStorage 원본을 사용해 자동 복원하지 않습니다. 최신 데이터를 먼저 내보내고 별도 백업을 확인하세요."
+                : "기존 localStorage 저장소에서 복구 중입니다."}
+            </p>
+            {(corruptRaw || localStorage.getItem(STORAGE_KEY) !== null) && (
               <button
-                className="primary"
-                onClick={() =>
-                  download(
-                    `palate-recovery-${today()}.txt`,
-                    corruptRaw,
-                    "text/plain",
-                  )
-                }
+                className="text-button"
+                onClick={() => {
+                  const raw = localStorage.getItem(STORAGE_KEY) ?? corruptRaw;
+                  if (raw) download("palate-legacy-evidence-" + today() + ".txt", raw, "text/plain");
+                }}
               >
-                <Download size={17} />
-                저장 원본 내려받기
+                <Download size={17} /> 현재 로컬 원본 별도 보관
               </button>
+            )}
+            {primaryMode && (
+              <>
+                <button className="primary" disabled={rescueBusy} onClick={async () => {
+                  setRescueBusy(true);
+                  setRescueError("");
+                  try {
+                    const result = await readPrimaryForRescue();
+                    download("palate-idb-rescue-" + today() + ".json", JSON.stringify(result.archive, null, 2));
+                  } catch (e) {
+                    setRescueError("검증된 IndexedDB 백업을 만들지 못했습니다: " + (e as Error).message);
+                  } finally {
+                    setRescueBusy(false);
+                  }
+                }}>
+                  <Download size={17} /> {rescueBusy ? "IndexedDB 검증 중…" : "검증된 최신 IndexedDB 기록 내보내기"}
+                </button>
+                <p className="micro">
+                  기존 로컬 원본과 충돌해도, IndexedDB 사본의 모든 기록·사진이 무결하면 별도 JSON으로 내려받을 수 있습니다.
+                  실패한 경우 임의로 초기화하지 마세요. 기존 데이터베이스는 그대로 남습니다.
+                </p>
+                {rescueError && <p role="alert" className="error">{rescueError}</p>}
+              </>
             )}
             <label className="field">
               <span>정상 JSON 백업 선택</span>
