@@ -944,10 +944,10 @@ export function Places({
           {edit && (
             <form
               className="place-edit"
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 if (
-                  onUpdate((a) =>
+                  await onUpdate((a) =>
                     brand
                       ? {
                           ...a,
