@@ -115,10 +115,10 @@ export default function ChoosePage({
             ? !!l.targets.length
             : l.kind === "REEL")),
   );
-  function openCatalog(catalog: CatalogBrand) {
+  async function openCatalog(catalog: CatalogBrand) {
     let brandId = "";
     if (
-      onSave((a) => {
+      await onSave((a) => {
         const saved = addCatalog(a, catalog);
         brandId = saved.brandId;
         return saved.archive;
@@ -496,9 +496,9 @@ export default function ChoosePage({
             <div className="button-row">
               <button
                 className="danger-button"
-                onClick={() => {
+                onClick={async () => {
                   if (
-                    onSave((a) => ({
+                    await onSave((a) => ({
                       ...a,
                       saved_links: a.saved_links.filter(
                         (l) => l.id !== deleteLink.id,
@@ -599,7 +599,7 @@ function VenueDetail({
         abort.signal,
       );
       if (details.menus.length) {
-        if (onSave((a) => applyRestaurantDetails(a, place.id, details)))
+        if (await onSave((a) => applyRestaurantDetails(a, place.id, details)))
           setNotice(`메뉴 ${details.menus.length}개의 정보를 확인했습니다.`);
       } else
         setNotice(
@@ -892,11 +892,12 @@ export function ReceiveShare({
     if (blocked || handled.current === text) return;
     handled.current = text;
     setError("");
+    const processShare = async () => {
     try {
       const canonical = sharedUrl(text);
       let linkId = "",
         duplicate = false;
-      const ok = onSave((a) => {
+      const ok = await onSave((a) => {
         const saved = saveSharedLink(a, canonical, params.get("title") || "");
         linkId = saved.linkId;
         duplicate = saved.duplicate;
@@ -913,6 +914,8 @@ export function ReceiveShare({
     } catch (e) {
       setError((e as Error).message);
     }
+    };
+    void processShare();
   }, [blocked, text]);
   return (
     <div className="receive-page">
