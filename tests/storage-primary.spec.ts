@@ -139,3 +139,21 @@ test("P2-B deletes edited photo blobs from active storage but keeps original rol
   });
   expect(photoCount).toBe(0);
 });
+
+test("P2-B simultaneous writes from two tabs do not silently discard either meal", async ({ page, context }) => {
+  await page.goto("/");
+  await addMeal(page, "동시성 검증 초기 메뉴");
+  await activate(page);
+  const second = await context.newPage();
+  await second.goto("/");
+  await expect(second.locator(".p2-card")).toHaveCount(1);
+  await Promise.all([
+    addMeal(page, "동시에 추가한 메뉴 A"),
+    addMeal(second, "동시에 추가한 메뉴 B"),
+  ]);
+  await expect(page.locator(".p2-card")).toHaveCount(3);
+  await page.reload();
+  await expect(page.locator(".p2-card").filter({hasText:"동시에 추가한 메뉴 A"})).toHaveCount(1);
+  await expect(page.locator(".p2-card").filter({hasText:"동시에 추가한 메뉴 B"})).toHaveCount(1);
+  await second.close();
+});
