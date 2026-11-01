@@ -158,3 +158,48 @@
 .p2-compare-grid span { font-size: 14px; }
 .p2-compare-grid p { font-size: 14px; line-height: 1.6; }
 @media (max-width: 760px) { .p2-compare-grid { grid-template-columns: 1fr; } }
+
+/* P3 local-only inbox: functional review layout (visual refinement deferred). */
+.hub-inbox h1 { font-size: clamp(28px, 3vw, 38px); margin: 8px 0 10px; }
+.hub-inbox .p2-muted { max-width: 790px; }
+.hub-inbox-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 22px 0 12px; }
+.hub-inbox-tools button { display: inline-flex; align-items: center; gap: 9px; }
+.hub-import { background: #efece3; padding: 16px; max-width: 740px; display: grid; gap: 11px; }
+.hub-import h2 { font-size: 19px; }
+.hub-import p { font-size: 14px; color: #575e52; }
+.hub-import textarea { width: 100%; border: 1px solid #ccc8bc; background: #fffefa; padding: 13px; resize: vertical; font-family: ui-monospace, monospace; font-size: 13px; }
+.hub-import button { justify-self: start; }
+.hub-error, .hub-notice { margin: 13px 0; padding: 12px 14px; line-height: 1.5; font-size: 14px; }
+.hub-error { display: flex; gap: 8px; align-items: flex-start; color: #8c3a2f; background: #f5e9e3; }
+.hub-notice { background: #e8ebe1; color: #414e3f; }
+.hub-inbox-filters { display: flex; gap: 7px; margin: 12px 0 18px; }
+.hub-inbox-filters button { border: 1px solid #cbc6ba; padding: 8px 16px; font-size: 14px; }
+.hub-inbox-filters button.active { background: #394438; color: #fff; border-color: #394438; }
+.hub-candidate-grid { display: grid; grid-template-columns: minmax(210px, 0.9fr) minmax(0, 1.5fr); gap: 24px; align-items: start; }
+.hub-candidate-list { min-width: 0; display: grid; gap: 8px; }
+.hub-candidate-item { display: flex; flex-direction: column; text-align: left; min-width: 0; padding: 14px 15px; gap: 5px; border: 1px solid #d7d2c6; background: #f7f6f0; }
+.hub-candidate-item.active { background: #e6e9de; border-color: #8e9a81; }
+.hub-candidate-item strong { font-size: 18px; overflow-wrap: anywhere; }
+.hub-candidate-item span { font-size: 14px; line-height: 1.5; }
+.hub-candidate-item small { font-size: 13px; color: #626958; }
+.hub-candidate-item .hub-type { font-size: 12px; letter-spacing: .025em; color: #656e60; }
+.hub-review { background: #f9f8f3; border: 1px solid #ded9ce; padding: 22px; min-height: 200px; }
+.hub-review-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hub-review-title h2 { font-size: 23px; }
+.hub-review-title button { min-width: 36px; min-height: 36px; display: grid; place-items: center; }
+.hub-meta { font-size: 12px; overflow-wrap: anywhere; color: #76796c; margin: 11px 0 23px; }
+.hub-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.hub-fields label { font-size: 14px; color: #424a3f; font-weight: 600; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.hub-fields input, .hub-fields select, .hub-fields textarea { padding: 12px; width: 100%; min-width: 0; background: #fffefa; border: 1px solid #d1cdc0; font: inherit; color: #292d29; }
+.hub-fields .hub-full { grid-column: 1 / -1; }
+.hub-warning { border-top: 1px solid #ded8c9; margin-top: 22px; padding-top: 16px; }
+.hub-empty { padding: 34px 0; font-size: 15px; color: #62675e; display: flex; align-items: center; gap: 12px; }
+.hub-inbox .p2-actions button { min-height: 44px; }
+@media (max-width: 760px) {
+ .hub-candidate-grid { grid-template-columns: 1fr; gap: 18px; }
+ .hub-review { padding: 15px; }
+ .hub-fields { grid-template-columns: 1fr; gap: 14px; }
+ .hub-import { padding: 12px; }
+ .hub-candidate-item { padding: 12px; }
+ .hub-inbox-tools button { width: 100%; justify-content: center; }
+}
