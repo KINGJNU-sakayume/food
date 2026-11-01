@@ -30,8 +30,11 @@ export interface ApprovalResult {
   entity_id: string;
   duplicate: boolean;
 }
-const validDate = (v: string) =>
-  /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(v).toISOString().slice(0, 10) === v;
+const validDate = (v: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(v);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
 const val = (v: unknown, max: number) =>
   typeof v === "string" && v.trim().length > 0 && v.length <= max;
 
