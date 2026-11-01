@@ -28,7 +28,7 @@ export default function QuickAdd({
 }: {
   archive: Archive;
   onClose: () => void;
-  onSave: (fn: (a: Archive) => Archive) => boolean;
+  onSave: (fn: (a: Archive) => Archive) => Promise<boolean>;
   record?: EatingRecord;
   initialMenuId?: string;
   initialPlaceId?: string;
@@ -133,14 +133,14 @@ export default function QuickAdd({
     <Modal title={record ? "EDIT RECORD" : "NEW RECORD"} onClose={onClose}>
       <form
         className="quick-form"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
           if (!draft.verdict || !draft.reorder_intent) {
             setError("호·불호와 재주문 의사를 선택해 주세요.");
             return;
           }
           if (processing) return;
-          if (onSave((a) => saveRecord(a, draft, record?.id))) onClose();
+          if (await onSave((a) => saveRecord(a, draft, record?.id))) onClose();
         }}
       >
         <h2>{record ? "그날의 기록을 고치다." : "무엇을 먹었나요?"}</h2>
