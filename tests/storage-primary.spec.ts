@@ -157,3 +157,109 @@ test("P2-B simultaneous writes from two tabs do not silently discard either meal
   await expect(page.locator(".p2-card").filter({hasText:"동시에 추가한 메뉴 B"})).toHaveCount(1);
   await second.close();
 });
+
+
+test("P2-B exports the latest verified IDB copy when frozen legacy is malformed, then restores safely", async ({ page }) => {
+  await page.goto("/");
+  await addMeal(page, "복구 기준 식사");
+  await activate(page);
+  await addMeal(page, "IDB에만 있는 최신 식사");
+  const oldPrimaryMode = await page.evaluate(() => localStorage.getItem("palate.storage.primary.v1"));
+  expect(oldPrimaryMode).toBe("on");
+  const damaged = "{legacy-corrupt";
+  await page.evaluate(({ key, bad }) => localStorage.setItem(key, bad), { key: KEY, bad: damaged });
+  await page.reload();
+  const recovery = page.getByRole("dialog");
+  await expect(recovery.getByText(/IndexedDB 읽기·무결성 검사 실패/)).toBeVisible();
+
+  const downloadEvent = page.waitForEvent("download");
+  await recovery.getByRole("button", { name: /검증된 최신 IndexedDB 기록 내보내기/ }).click();
+  const download = await downloadEvent;
+  const stream = await download.createReadStream();
+  const parts: Buffer[] = [];
+  for await (const chunk of stream) parts.push(Buffer.from(chunk));
+  const json = Buffer.concat(parts);
+  const archive = JSON.parse(json.toString("utf8"));
+  expect(archive.records).toHaveLength(2);
+  expect(archive.menus.some((m: {name:string}) => m.name === "IDB에만 있는 최신 식사")).toBe(true);
+  expect(await page.evaluate(key => localStorage.getItem(key), KEY)).toBe(damaged);
+
+  await recovery.getByLabel("정상 JSON 백업 선택").setInputFiles({
+    name: "palate-rescued.json", mimeType: "application/json", buffer: json,
+  });
+  await expect(recovery.getByText(/선택한 백업/)).toBeVisible();
+  await recovery.getByLabel(/기존 기록과 원본을 따로 보관했고/).check();
+  await recovery.getByRole("button", { name: /새 저장소에 복구/ }).click();
+  await expect(recovery).toHaveCount(0);
+  await expect(page.locator(".p2-card")).toHaveCount(2);
+  const newMode = await page.evaluate(() => localStorage.getItem("palate.storage.primary.v1"));
+  expect(newMode).toMatch(/^db:palate-storage-recovered-/);
+  expect(newMode).not.toBe(oldPrimaryMode);
+  expect(await page.evaluate(key => localStorage.getItem(key), KEY)).toBe(damaged);
+  await page.reload();
+  await expect(page.locator(".p2-card")).toHaveCount(2);
+  await addMeal(page, "복구 이후 새로운 기록");
+  await expect(page.locator(".p2-card")).toHaveCount(3);
+  expect(await page.evaluate(key => localStorage.getItem(key), KEY)).toBe(damaged);
+});
+
+test("P2-B restores a portable JSON without overwriting an invalid primary database", async ({ page }) => {
+  await page.goto("/");
+  await addMeal(page, "복구할 식사");
+  const rollback = await page.evaluate(key => localStorage.getItem(key), KEY);
+  expect(rollback).toBeTruthy();
+  await activate(page);
+  await page.evaluate(async () => {
+    const req = indexedDB.open("palate-storage-primary-v1", 1);
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    try {
+      const tx = db.transaction("manifest", "readwrite");
+      const store = tx.objectStore("manifest");
+      const existing = store.get("active");
+      existing.onsuccess = () => {
+        const entry = existing.result;
+        entry.digest = "invalid-checksum";
+        store.put(entry);
+      };
+      await new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } finally { db.close(); }
+  });
+  await page.reload();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText(/IndexedDB 읽기·무결성 검사 실패/)).toBeVisible();
+  const errorButton = dialog.getByRole("button", { name: /검증된 최신 IndexedDB 기록 내보내기/ });
+  await errorButton.click();
+  await expect(dialog.getByText(/검증된 IndexedDB 백업을 만들지 못했습니다/)).toBeVisible();
+  await dialog.getByLabel("정상 JSON 백업 선택").setInputFiles({
+    name: "rollback.json", mimeType: "application/json", buffer: Buffer.from(rollback!),
+  });
+  await dialog.getByLabel(/기존 기록과 원본을 따로 보관했고/).check();
+  await dialog.getByRole("button", { name: /새 저장소에 복구/ }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".p2-card")).toHaveCount(1);
+  expect(await page.evaluate(key => localStorage.getItem(key), KEY)).toBe(rollback);
+  const unchangedOldDigest = await page.evaluate(async () => {
+    const req = indexedDB.open("palate-storage-primary-v1", 1);
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    try {
+      const tx = db.transaction("manifest", "readonly");
+      const get = tx.objectStore("manifest").get("active");
+      return await new Promise<string>((resolve, reject) => {
+        get.onsuccess = () => resolve(get.result.digest);
+        get.onerror = () => reject(get.error);
+      });
+    } finally { db.close(); }
+  });
+  expect(unchangedOldDigest).toBe("invalid-checksum");
+  await page.reload();
+  await expect(page.locator(".p2-card")).toHaveCount(1);
+});
