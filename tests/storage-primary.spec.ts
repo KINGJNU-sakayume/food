@@ -263,3 +263,21 @@ test("P2-B restores a portable JSON without overwriting an invalid primary datab
   await page.reload();
   await expect(page.locator(".p2-card")).toHaveCount(1);
 });
+
+test("P2-B resumes an interrupted activation without erasing the already verified primary", async ({ page }) => {
+  await page.goto("/");
+  await addMeal(page, "활성화 복구 테스트 식사", true);
+  await activate(page);
+  const oldArchive = await page.evaluate(key => localStorage.getItem(key), KEY);
+  const originalDatabase = await page.evaluate(() => indexedDB.databases().then(d => d.find(x => x.name === "palate-storage-primary-v1")?.name));
+  expect(originalDatabase).toBe("palate-storage-primary-v1");
+  await page.evaluate(() => localStorage.removeItem("palate.storage.primary.v1"));
+  await page.reload();
+  await expect(page.locator(".p2-card")).toHaveCount(1);
+  await page.getByRole("button", { name: "아카이브 설정과 백업" }).click();
+  await page.getByText("별도 JSON 백업을 보관했고").click();
+  await page.getByRole("button", { name: "검증된 사본으로 기본 저장소 전환" }).click();
+  await expect(page.getByText(/이 브라우저는 IndexedDB에 식사 데이터와 사진을 저장합니다/)).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("palate.storage.primary.v1"))).toBe("on");
+  expect(await page.evaluate(key => localStorage.getItem(key), KEY)).toBe(oldArchive);
+});
