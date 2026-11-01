@@ -4,6 +4,8 @@ import type { Archive, RecordDraft } from "../types/model";
 import type { CandidateEnvelope } from "../lib/lifehub-contract";
 import { candidateKey, validateCandidate } from "../lib/lifehub-contract";
 import { approveCandidate, type CandidateReview } from "../lib/lifehub-approval";
+import { STORAGE_KEY } from "../lib/data";
+import { primaryEnabled } from "../lib/storage-primary";
 import {
   addLocalCandidate, completeLocalCandidate, exampleCandidates, readLocalInbox,
   rejectLocalCandidate, inboxStorageKey,
@@ -57,9 +59,15 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
   const shown = filter === "all" ? entries : entries.filter(e => e.status === "pending");
   const pending = entries.filter(e => e.status === "pending").length;
 
-  function importCandidates(items: unknown[]) {
+  async function importCandidates(items: unknown[]) {
     // Validate ALL before modifying local storage.
     items.forEach(validateCandidate);
+    // Persist the generated user ID before writing a user-scoped inbox.
+    // Otherwise a new emptyArchive() on reload makes its entries invisible.
+    if (!primaryEnabled() && !localStorage.getItem(STORAGE_KEY)) {
+      if (!await onSave(a => a))
+        throw new Error("후보함의 사용자 ID를 안전하게 저장하지 못했습니다.");
+    }
     let inserted = 0;
     for (const item of items) {
       const result = addLocalCandidate(archive, item);
@@ -69,17 +77,17 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
     setNotice(inserted + "개 후보를 추가했습니다. 기존 식사 기록은 변경되지 않았습니다.");
     setError("");
   }
-  const examples = () => {
-    try { importCandidates(exampleCandidates()); }
+  const examples = async () => {
+    try { await importCandidates(exampleCandidates()); }
     catch (e) { setError((e as Error).message); }
   };
-  const onImport = () => {
+  const onImport = async () => {
     try {
       if (!importText.trim() || importText.length > 32_000) throw new Error("32KB 이하 후보 JSON을 입력해 주세요.");
       const parsed: unknown = JSON.parse(importText);
       const items = Array.isArray(parsed) ? parsed : [parsed];
       if (!items.length || items.length > 20) throw new Error("한 번에 1~20개 후보만 가져올 수 있습니다.");
-      importCandidates(items);
+      await importCandidates(items);
       setImportText(""); setShowImport(false);
     } catch (e) { setError((e as Error).message); }
   };
@@ -139,12 +147,12 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
     <h1>기록 후보함</h1>
     <p className="p2-muted">Life Hub 서버가 연결되기 전의 로컬 테스트 화면입니다. 샘플과 직접 붙여넣은 JSON만 처리하며, ChatGPT·Claude에 연결된 상태는 아닙니다.</p>
     <div className="hub-inbox-tools">
-      <button type="button" className="primary" onClick={examples}><Plus size={17}/> 테스트 후보 2개 불러오기</button>
+      <button type="button" className="primary" onClick={() => { void examples(); }}><Plus size={17}/> 테스트 후보 2개 불러오기</button>
       <button type="button" className="p2-quiet-btn" onClick={() => setShowImport(x => !x)}><FileJson size={17}/> 후보 JSON 직접 입력</button>
     </div>
     {showImport && <section className="hub-import"><h2>후보 JSON 검증</h2><p>수동으로 입력한 JSON의 출처는 인증되지 않습니다. 실제 외부 연결이 아니라 계약 검사 기능입니다.</p>
       <textarea aria-label="후보 JSON 입력" value={importText} onChange={e => setImportText(e.target.value)} rows={6} placeholder={'{"schema_version":1,"candidate_type":"meal",...}'}/>
-      <button type="button" onClick={onImport} className="primary">검증 후 후보함에 추가</button>
+      <button type="button" onClick={() => { void onImport(); }} className="primary">검증 후 후보함에 추가</button>
     </section>}
     {error && <p role="alert" className="hub-error"><ShieldAlert size={17}/>{error}</p>}
     {notice && <p role="status" className="hub-notice">{notice}</p>}
