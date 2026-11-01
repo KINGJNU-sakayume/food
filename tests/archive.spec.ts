@@ -35,6 +35,7 @@ test("quick add, repeated meals, edit, delete, persistence, JSON and photos", as
       has: page.getByRole("heading", { name: "테스트 로스카츠", exact: true }),
     })
     .click();
+  await page.getByRole("link", { name: /메뉴 정보 수정/ }).click();
   await page.getByRole("button", { name: "메뉴 정보 수정" }).click();
   await page
     .locator(".menu-edit")
@@ -128,7 +129,7 @@ test("demo, navigation, search and narrow mobile viewport have no overflow", asy
     .getByRole("dialog")
     .getByRole("button", { name: "예시 둘러보기" })
     .click();
-  await expect(page.locator(".menu-tile")).toHaveCount(7);
+  await expect(page.locator(".p2-card")).toHaveCount(7);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -140,7 +141,7 @@ test("demo, navigation, search and narrow mobile viewport have no overflow", asy
     page.locator(".search-result-group").first().getByRole("link"),
   ).toHaveCount(2);
   await page.getByRole("button", { name: "닫기", exact: true }).click();
-  for (const label of ["기록", "장소", "취향", "컬렉션"]) {
+  for (const label of ["일기", "고르기", "아카이브"]) {
     await page
       .getByRole("navigation")
       .getByRole("link", { name: label })
@@ -152,8 +153,8 @@ test("demo, navigation, search and narrow mobile viewport have no overflow", asy
       ),
     ).toBe(true);
   }
-  await page.getByRole("button", { name: "− 불호", exact: true }).click();
-  await expect(page.locator(".menu-tile")).toHaveCount(1);
+  await page.locator(".p2-chips").getByRole("button", { name: "불호", exact: true }).click();
+  await expect(page.locator(".p2-card")).toHaveCount(1);
 });
 test("invalid import and full localStorage keep existing records", async ({
   page,
