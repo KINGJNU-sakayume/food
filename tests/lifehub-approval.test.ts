@@ -87,3 +87,13 @@ test("rejecting a local inbox candidate never changes the Archive",()=>{
   assert.equal(readLocalInbox(a,storage)[0].status,"rejected");
   assert.equal(a.records.length,0);
 });
+
+test("same-name branches with different addresses stay separate and ambiguous names require review", () => {
+  const first = approveCandidate(emptyArchive(), candidate, review);
+  const secondCandidate = { ...candidate, idempotency_key: "palate_local_example_004" };
+  const second = approveCandidate(first.archive, secondCandidate, { ...review, address: "홍대" });
+  assert.equal(second.archive.places.length, 2);
+  assert.notEqual(second.archive.records[0].place_id, second.archive.records[1].place_id);
+  const thirdCandidate = { ...candidate, idempotency_key: "palate_local_example_005" };
+  assert.throws(() => approveCandidate(second.archive, thirdCandidate, { ...review, address: "" }), /주소나 지점/);
+});
