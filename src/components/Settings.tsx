@@ -7,6 +7,7 @@ import { Modal } from "./Common";
 import { ShortcutGuide } from "./DiscoveryCommon";
 import { httpsUrl } from "../lib/urls";
 import { defaultEndpoint } from "../lib/restaurants";
+import { stageLegacyArchive, verifyStagedArchive, type StagingReport } from "../lib/storage-staging";
 export default function Settings({
   archive,
   onClose,
@@ -26,7 +27,35 @@ export default function Settings({
     [endpoint, setEndpoint] = useState(
       archive.preferences.restaurant_endpoint || "",
     ),
-    [shortcut, setShortcut] = useState(false);
+    [shortcut, setShortcut] = useState(false),
+    [staging, setStaging] = useState(false),
+    [stagingReport, setStagingReport] = useState<StagingReport>(),
+    [stagingError, setStagingError] = useState("");
+  async function makeStagingCopy() {
+    setStaging(true);
+    setStagingError("");
+    setStagingReport(undefined);
+    try {
+      const report = await stageLegacyArchive();
+      setStagingReport(report);
+    } catch (e) {
+      setStagingError((e as Error).message || "사본 검증에 실패했습니다.");
+    } finally {
+      setStaging(false);
+    }
+  }
+  async function verifyExistingCopy() {
+    setStaging(true);
+    setStagingError("");
+    try {
+      const result = await verifyStagedArchive();
+      setNotice("사본 무결성 확인 완료 · 식사 " + result.archive.records.length + "건, 사진 " + result.archive.photos.length + "장.");
+    } catch (e) {
+      setStagingError((e as Error).message);
+    } finally {
+      setStaging(false);
+    }
+  }
   async function importFile(file?: File) {
     if (!file) return;
     setError("");
@@ -167,6 +196,46 @@ export default function Settings({
               </span>
             </button>
           )}
+        </div>
+        <div className="settings-section">
+          <h3>P2 · 새 저장 구조 사전 점검</h3>
+          <p className="muted">
+            현재 기록을 변경하지 않고 IndexedDB에 검사용 사본을 만듭니다.
+            사진은 이미지 데이터로 분리하여 저장하고, 원본과 모든 필드·사진이
+            동일한지 검증합니다. 새로운 저장소로 전환하는 기능은 아닙니다.
+          </p>
+          <p className="micro">
+            먼저 위의 JSON 백업을 별도 파일로 보관해 주세요. IndexedDB 사본도
+            같은 브라우저의 사이트 데이터이므로 독립적인 백업이 아니며,
+            일시적으로 저장 공간을 추가 사용합니다.
+          </p>
+          <button
+            className="settings-action"
+            disabled={staging}
+            onClick={() => { void makeStagingCopy(); }}
+          >
+            <span>{staging ? "사본 생성·검증 중…" : "IndexedDB 사본 생성 및 무결성 검사"}</span>
+            <ArrowUpRight size={17} />
+          </button>
+          <button
+            className="text-button"
+            disabled={staging}
+            onClick={() => { void verifyExistingCopy(); }}
+          >
+            기존 사본만 다시 검증 <ArrowUpRight size={16} />
+          </button>
+          {stagingReport && (
+            <div role="status" className="inline-notice">
+              <strong>사본 검증 성공</strong>
+              <p>
+                식사 {stagingReport.recordCount}건 · 사진 {stagingReport.photoCount}장
+                · 원본 {(stagingReport.originalBytes / 1024).toFixed(0)}KB.
+                원본 저장소는 변경되지 않았습니다.
+              </p>
+              <p className="micro">확인 시각: {new Date(stagingReport.copiedAt).toLocaleString("ko-KR")}</p>
+            </div>
+          )}
+          {stagingError && <p className="error" role="alert">{stagingError}</p>}
         </div>
         <div className="settings-section">
           <h3>백업 불러오기</h3>
