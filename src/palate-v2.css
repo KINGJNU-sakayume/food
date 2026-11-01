@@ -143,3 +143,18 @@
   .p2-meal-copy h2 { font-size: 23px; }
 }
 @media (max-width: 350px) { .p2-card h2 { font-size: 16px; } .p2-choose-item strong { font-size: 16px; } .p2-card-meta { gap: 4px; } }
+
+/* Choose: temporary shortlist comparison, no new persistent data */
+.p2-compare-candidate { min-width: 0; border-bottom: 1px solid #dedacf; padding-bottom: 9px; }
+.p2-compare-candidate .p2-choose-item { border-bottom: 0; }
+.p2-compare-candidate > button { font-size: 13px; border: 1px solid #c6c2b6; padding: 7px 12px; min-height: 36px; color: #485041; }
+.p2-compare-candidate > button.p2-compare-selected { background: #414a3e; color: white; }
+.p2-compare-candidate > button:disabled { opacity: .4; cursor: not-allowed; }
+.p2-compare-panel { margin: 24px 0 32px; padding: 0 16px 18px; background: #ece8dd; }
+.p2-compare-panel .p2-section-head > button { text-decoration: underline; font-size: 14px; }
+.p2-compare-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-bottom: 12px; }
+.p2-compare-grid a { background: #fbfaf5; padding: 14px; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.p2-compare-grid strong { font-size: 17px; }
+.p2-compare-grid span { font-size: 14px; }
+.p2-compare-grid p { font-size: 14px; line-height: 1.6; }
+@media (max-width: 760px) { .p2-compare-grid { grid-template-columns: 1fr; } }
