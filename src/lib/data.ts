@@ -45,6 +45,7 @@ export function emptyArchive(): Archive {
     record_tags: [],
     wishes: [],
     saved_links: [],
+    lifehub_receipts: [],
     preferences: {},
     demo: false,
   };
@@ -499,6 +500,23 @@ export function validateArchive(input: unknown): Archive {
       )
         return fail();
       seen.add(t.type + ":" + t.id);
+    }
+  }
+  if (a.lifehub_receipts !== undefined) {
+    if (!Array.isArray(a.lifehub_receipts) || a.lifehub_receipts.length > 100000) return fail();
+    const receiptKeys = new Set<string>();
+    for (const receipt of a.lifehub_receipts) {
+      if (!object(receipt) ||
+          !str(receipt.key, 150) ||
+          !/^(chatgpt|claude|manual):[A-Za-z0-9_.:-]{8,128}$/.test(receipt.key) ||
+          receiptKeys.has(receipt.key) ||
+          !["meal", "wish"].includes(String(receipt.entity_type)) ||
+          !str(receipt.entity_id, 100) ||
+          !timestamp(receipt.approved_at) ||
+          (receipt.entity_type === "meal"
+            ? !records.has(receipt.entity_id)
+            : !a.wishes.some(w => w.id === receipt.entity_id))) return fail();
+      receiptKeys.add(receipt.key);
     }
   }
   if (
