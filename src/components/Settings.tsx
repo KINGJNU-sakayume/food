@@ -13,11 +13,15 @@ export default function Settings({
   onClose,
   onSave,
   corruptRaw,
+  primaryMode,
+  onActivatePrimary,
 }: {
   archive: Archive;
   onClose: () => void;
   onSave: (fn: (a: Archive) => Archive) => Promise<boolean>;
   corruptRaw?: string;
+  primaryMode: boolean;
+  onActivatePrimary: () => Promise<boolean>;
 }) {
   const [name, setName] = useState(archive.user.display_name),
     [pending, setPending] = useState<Archive>(),
@@ -30,7 +34,8 @@ export default function Settings({
     [shortcut, setShortcut] = useState(false),
     [staging, setStaging] = useState(false),
     [stagingReport, setStagingReport] = useState<StagingReport>(),
-    [stagingError, setStagingError] = useState("");
+    [stagingError, setStagingError] = useState(""),
+    [switchConfirmed, setSwitchConfirmed] = useState(false);
   async function makeStagingCopy() {
     setStaging(true);
     setStagingError("");
@@ -236,6 +241,38 @@ export default function Settings({
             </div>
           )}
           {stagingError && <p className="error" role="alert">{stagingError}</p>}
+        </div>
+        <div className="settings-section">
+          <h3>P2-B · 기본 저장소 전환</h3>
+          <p className="muted">
+            {primaryMode
+              ? "이 브라우저는 IndexedDB에 식사 데이터와 사진을 저장합니다. 기존 localStorage JSON 원본은 복구용으로 유지합니다."
+              : "검증용 사본과 원본이 일치할 때에만 IndexedDB를 주 저장소로 전환할 수 있습니다. 전환 후 새로운 기록은 기존 localStorage에 반영되지 않으며, 기존 JSON은 복구용 원본으로 보존됩니다."}
+          </p>
+          {!primaryMode && (
+            <>
+              <p className="micro">
+                반드시 먼저 JSON 백업을 외부에 보관하고, P2-A 사본 검증을 끝내 주세요.
+                다른 탭과 Safari 홈 화면 설치 앱은 닫고 진행해야 합니다.
+              </p>
+              <label className="checkbox">
+                <input type="checkbox" checked={switchConfirmed} onChange={e => setSwitchConfirmed(e.target.checked)} />
+                별도 JSON 백업을 보관했고, 기존 저장 키가 보존된다는 점을 확인했습니다.
+              </label>
+              <button className="settings-action" disabled={!switchConfirmed || staging} onClick={async () => {
+                setStaging(true);
+                try {
+                  if (await onActivatePrimary()) {
+                    setNotice("기본 저장소를 IndexedDB로 전환했습니다. 재접속 시에도 상태를 확인합니다.");
+                    setSwitchConfirmed(false);
+                  }
+                } finally { setStaging(false); }
+              }}>
+                <span>{staging ? "저장 구조 전환 중…" : "검증된 사본으로 기본 저장소 전환"}</span>
+                <ArrowUpRight size={17}/>
+              </button>
+            </>
+          )}
         </div>
         <div className="settings-section">
           <h3>백업 불러오기</h3>
