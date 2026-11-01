@@ -167,10 +167,22 @@ export async function activatePrimary(): Promise<PrimarySnapshot> {
   try {
     const tx = db.transaction(["manifest", "photos"], "readwrite");
     const done = transactionDone(tx);
-    tx.objectStore("manifest").put(manifest);
-    tx.objectStore("photos").clear();
-    for (const photo of prepared) tx.objectStore("photos").put(photo);
+    const present = tx.objectStore("manifest").get(PRIMARY_ID);
+    let alreadyPrepared = false;
+    present.onsuccess = () => {
+      if (present.result) {
+        // A previous activation may already contain NEW meals. Never overwrite it.
+        alreadyPrepared = true;
+        return;
+      }
+      tx.objectStore("manifest").put(manifest);
+      const store = tx.objectStore("photos");
+      store.clear();
+      for (const photo of prepared) store.put(photo);
+    };
     await done;
+    if (alreadyPrepared)
+      throw new Error("이미 IndexedDB 데이터가 존재합니다. 이전 전환의 상태를 확인해 주세요. 기존 데이터를 덮어쓰지 않았습니다.");
   } finally {
     db.close();
   }
@@ -206,7 +218,7 @@ async function compareAndSwap(
       const previous = check.result as PrimaryManifest | undefined;
       if (!previous || previous.revision !== revision || previous.legacyDigest !== legacyDigest) {
         conflict = true;
-        return; // Read-only transaction: successful completion reports a conflict.
+        return; // Commit nothing; completion reports a revision conflict.
       }
       tx.objectStore("manifest").put(meta);
       const store = tx.objectStore("photos");
