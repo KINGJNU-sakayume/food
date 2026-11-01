@@ -16,7 +16,7 @@ export default function Settings({
 }: {
   archive: Archive;
   onClose: () => void;
-  onSave: (fn: (a: Archive) => Archive) => boolean;
+  onSave: (fn: (a: Archive) => Archive) => Promise<boolean>;
   corruptRaw?: string;
 }) {
   const [name, setName] = useState(archive.user.display_name),
@@ -125,10 +125,10 @@ export default function Settings({
           주세요.
         </p>
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             if (
-              onSave((a) => ({
+              await onSave((a) => ({
                 ...a,
                 user: {
                   ...a.user,
@@ -271,8 +271,8 @@ export default function Settings({
               <div className="button-row">
                 <button
                   className="primary"
-                  onClick={() => {
-                    if (onSave(() => pending)) {
+                  onClick={async () => {
+                    if (await onSave(() => pending)) {
                       setPending(undefined);
                       onClose();
                     }
@@ -310,7 +310,7 @@ export default function Settings({
               보관함은 계속 이 브라우저에 저장됩니다.
             </p>
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 setError("");
                 if (endpoint.trim() && !httpsUrl(endpoint.trim())) {
@@ -318,7 +318,7 @@ export default function Settings({
                   return;
                 }
                 if (
-                  onSave((a) => ({
+                  await onSave((a) => ({
                     ...a,
                     preferences: {
                       ...a.preferences,
@@ -382,8 +382,8 @@ export default function Settings({
               <div className="button-row">
                 <button
                   className="danger-button"
-                  onClick={() => {
-                    if (onSave(() => emptyArchive())) onClose();
+                  onClick={async () => {
+                    if (await onSave(() => emptyArchive())) onClose();
                   }}
                 >
                   모든 데이터 삭제
