@@ -5,7 +5,7 @@ import { normalize, preference, reorders, verdicts } from "../lib/data";
 import { dateLabel, Empty, Modal, VerdictLabel } from "../components/Common";
 
 type Add = (menuId?: string, placeId?: string) => void;
-type Save = (fn: (a: Archive) => Archive, message?: string | false) => boolean;
+type Save = (fn: (a: Archive) => Archive, message?: string | false) => Promise<boolean>;
 type Group = { menu: Menu; place?: Place; placeId: string; records: EatingRecord[]; key: string };
 const unplaced = "unplaced";
 const sortRecords = (r: EatingRecord[]) => [...r].sort((a, b) => b.eaten_at.localeCompare(a.eaten_at) || b.created_at.localeCompare(a.created_at));
@@ -185,10 +185,10 @@ export function DishV2({ archive, menuId, placeId, onAdd, onSave }: { archive: A
   if (!group) return <Empty title="메뉴 기록을 찾지 못했습니다." description="가게별 기록이 존재하는지 확인해 주세요."/>;
   const v = preference(group.records);
   const other = groups(archive).filter(g => g.menu.id === menuId && g.placeId !== placeId);
-  const saveReference = () => {
+  const saveReference = async () => {
     const url = reference.trim();
     if (url && (!/^https:\/\//i.test(url) || !credit.trim())) return;
-    const ok = onSave(a => {
+    const ok = await onSave(a => {
       const next = structuredClone(a);
       let o = next.offerings.find(o => o.menu_id === menuId && o.place_id === placeId);
       if (!o && placeId !== unplaced) {
