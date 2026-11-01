@@ -16,8 +16,11 @@ export function reconcileInbox(archive: Archive, entries: CandidateEnvelope[]): 
   const receipts = new Map((archive.lifehub_receipts || []).map(r => [r.key, r]));
   return entries.map(entry => {
     const receipt = receipts.get(entry.key);
-    return receipt
-      ? { ...entry, status: "confirmed", confirmed_entity_id: receipt.entity_id, reviewed_at: receipt.approved_at }
+    if (receipt) return { ...entry, status: "confirmed", confirmed_entity_id: receipt.entity_id, reviewed_at: receipt.approved_at };
+    // The Archive receipt is authoritative. A manually edited sidecar cannot
+    // forge an approval when no actual archive transaction ever happened.
+    return entry.status === "confirmed"
+      ? { ...entry, status: "pending", confirmed_entity_id: undefined, reviewed_at: undefined }
       : entry;
   });
 }
