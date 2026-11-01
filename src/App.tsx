@@ -751,7 +751,7 @@ export default function App() {
                   식사 {restore.records.length}건의 백업으로 {primaryMode ? "새 저장소에 복구" : "복원"}
                 </button>
               </div>
-            )
+            )}
             {!primaryMode && (
               <button
                 className="text-button danger"
