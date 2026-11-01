@@ -128,10 +128,10 @@ export default function AddPlace({
       if (!abort.signal.aborted) setLoading(false);
     }
   }
-  function save() {
+  async function save() {
     let placeId = "";
     if (
-      onSave((a) => {
+      await onSave((a) => {
         const saved = savePlace(a, {
           ...(selected || { address }),
           name: name.trim(),
