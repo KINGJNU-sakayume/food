@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, BookOpen, Bookmark, ChevronLeft, ChevronRight, Heart, MapPin, Plus, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Bookmark, ChevronLeft, ChevronRight, Heart, Inbox, MapPin, Plus, Search, SlidersHorizontal } from "lucide-react";
 import type { Archive, EatingRecord, Menu, Place, Verdict } from "../types/model";
 import { normalize, preference, reorders, verdicts } from "../lib/data";
 import { dateLabel, Empty, Modal, VerdictLabel } from "../components/Common";
@@ -154,7 +154,7 @@ export function ChooseV2({ archive }: { archive: Archive }) {
   }).filter(w => w.title);
   return <div className="p2-page">
     <Title eyebrow="WHAT TO EAT NEXT" title="오늘, 뭐 먹지?" caption="이미 먹어본 메뉴와 저장해둔 발견을 바탕으로 고릅니다."/>
-    <div className="p2-choose-quick"><a href="#/choose/places"><MapPin size={19}/> 내 음식점 둘러보기 <ArrowRight size={16}/></a><a href="#/choose/franchises"><BookOpen size={19}/> 프랜차이즈 메뉴 찾기 <ArrowRight size={16}/></a><a href="#/choose/reels"><Bookmark size={19}/> 릴스·저장 링크 ({archive.saved_links.length}) <ArrowRight size={16}/></a></div>
+    <div className="p2-choose-quick"><a href="#/inbox"><Inbox size={19}/> Life Hub 기록 후보함 <ArrowRight size={16}/></a><a href="#/choose/places"><MapPin size={19}/> 내 음식점 둘러보기 <ArrowRight size={16}/></a><a href="#/choose/franchises"><BookOpen size={19}/> 프랜차이즈 메뉴 찾기 <ArrowRight size={16}/></a><a href="#/choose/reels"><Bookmark size={19}/> 릴스·저장 링크 ({archive.saved_links.length}) <ArrowRight size={16}/></a></div>
     <div className="p2-section-head"><h2>다시 먹고 싶은 메뉴</h2><span>{saved.length}개</span></div>
     {saved.length ? <div className="p2-choose-list">{saved.slice(0, 8).map(g => <div key={g.key} className="p2-compare-candidate"><a href={groupHref(g)} className="p2-choose-item"><GroupCover archive={archive} group={g}/><div><strong>{g.menu.name}</strong><span>{placeName(g, archive)}</span><small>{dateLabel(g.records[0].eaten_at)} · 다시 먹는다</small></div><ChevronRight size={18}/></a><button type="button" className={compared.includes(g.key) ? "p2-compare-selected" : ""} aria-pressed={compared.includes(g.key)} disabled={!compared.includes(g.key) && compared.length >= 3} onClick={() => toggleCompare(g.key)}>{compared.includes(g.key) ? "비교에서 제외" : "비교에 담기"}</button></div>)}</div> : <p className="p2-muted">재주문 의사를 ‘다시 먹는다’로 남긴 메뉴가 여기에 모입니다.</p>}
     {!!selectedGroups.length && <div className="p2-compare-panel"><div className="p2-section-head"><h2>지금 고민하는 메뉴</h2><button onClick={() => setCompared([])}>초기화</button></div><div className="p2-compare-grid">{selectedGroups.map(g => <a href={groupHref(g)} key={g.key}><strong>{g.menu.name}</strong><span>{placeName(g, archive)}</span><VerdictLabel value={preference(g.records) || g.records[0].verdict}/><p>{g.records[0].short_note || "지난 식사 메모 없음"}</p></a>)}</div><p className="p2-muted">최대 3개 · 지난 경험을 바탕으로 비교하며 자동 추천 순위는 만들지 않습니다.</p></div>}

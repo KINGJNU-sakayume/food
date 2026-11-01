@@ -45,6 +45,7 @@ export function emptyArchive(): Archive {
     record_tags: [],
     wishes: [],
     saved_links: [],
+    lifehub_receipts: [],
     preferences: {},
     demo: false,
   };
@@ -165,12 +166,19 @@ export function saveRecord(
     };
     a.brands.push(brand);
   }
+  // Distinct branches sharing a display name must not inherit each other's
+  // verdicts. Match a supplied address exactly; ambiguous nameless branches
+  // require explicit place selection instead of guessing the first entry.
+  const possiblePlaces = a.places.filter(
+    p => p.normalized_name === normalize(draft.place_name) &&
+      p.brand_id === brand?.id,
+  );
+  if (!draft.place_id && !draft.address.trim() && possiblePlaces.length > 1)
+    throw new Error("같은 이름의 가게가 여러 곳 있습니다. 주소나 지점을 확인해 주세요.");
   let place = draft.place_id
-    ? a.places.find((p) => p.id === draft.place_id)
-    : a.places.find(
-        (p) =>
-          p.normalized_name === normalize(draft.place_name) &&
-          p.brand_id === brand?.id,
+    ? a.places.find(p => p.id === draft.place_id)
+    : possiblePlaces.find(p =>
+        !draft.address.trim() || normalize(p.address || "") === normalize(draft.address),
       );
   if (draft.place_name.trim() && !place) {
     place = {
@@ -499,6 +507,23 @@ export function validateArchive(input: unknown): Archive {
       )
         return fail();
       seen.add(t.type + ":" + t.id);
+    }
+  }
+  if (a.lifehub_receipts !== undefined) {
+    if (!Array.isArray(a.lifehub_receipts) || a.lifehub_receipts.length > 100000) return fail();
+    const receiptKeys = new Set<string>();
+    for (const receipt of a.lifehub_receipts) {
+      if (!object(receipt) ||
+          !str(receipt.key, 150) ||
+          !/^(chatgpt|claude|manual):[A-Za-z0-9_.:-]{8,128}$/.test(receipt.key) ||
+          receiptKeys.has(receipt.key) ||
+          !["meal", "wish"].includes(String(receipt.entity_type)) ||
+          !str(receipt.entity_id, 100) ||
+          !receipt.entity_id ||
+          // Keep historical receipts even when a user later deletes the meal.
+          // Otherwise re-sent candidates could recreate intentionally deleted records.
+          !timestamp(receipt.approved_at)) return fail();
+      receiptKeys.add(receipt.key);
     }
   }
   if (

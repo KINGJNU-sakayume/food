@@ -103,8 +103,16 @@ export interface SavedLink extends Owned {
   targets: LinkTarget[];
   updated_at: string;
 }
+export interface LifeHubReceipt {
+  key: string;
+  entity_type: "meal" | "wish";
+  entity_id: string;
+  approved_at: string;
+}
 export interface Archive {
   schema_version: 2;
+  /** Durable idempotency ledger committed atomically alongside approved records. */
+  lifehub_receipts?: LifeHubReceipt[];
   user: User;
   brands: Brand[];
   places: Place[];
