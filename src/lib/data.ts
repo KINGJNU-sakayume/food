@@ -166,12 +166,19 @@ export function saveRecord(
     };
     a.brands.push(brand);
   }
+  // Distinct branches sharing a display name must not inherit each other's
+  // verdicts. Match a supplied address exactly; ambiguous nameless branches
+  // require explicit place selection instead of guessing the first entry.
+  const possiblePlaces = a.places.filter(
+    p => p.normalized_name === normalize(draft.place_name) &&
+      p.brand_id === brand?.id,
+  );
+  if (!draft.place_id && !draft.address.trim() && possiblePlaces.length > 1)
+    throw new Error("같은 이름의 가게가 여러 곳 있습니다. 주소나 지점을 확인해 주세요.");
   let place = draft.place_id
-    ? a.places.find((p) => p.id === draft.place_id)
-    : a.places.find(
-        (p) =>
-          p.normalized_name === normalize(draft.place_name) &&
-          p.brand_id === brand?.id,
+    ? a.places.find(p => p.id === draft.place_id)
+    : possiblePlaces.find(p =>
+        !draft.address.trim() || normalize(p.address || "") === normalize(draft.address),
       );
   if (draft.place_name.trim() && !place) {
     place = {
