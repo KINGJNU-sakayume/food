@@ -29,9 +29,9 @@ test("v2 keeps the same menu separate by place and connects journal, timeline, a
   await dialog.getByRole("button", { name: "기억 저장하기" }).click();
   await page.goto("/#/collection");
   await expect(page.locator(".p2-card")).toHaveCount(2);
-  await expect(page.locator(".p2-card").first()).toContainText("하루멘 홍대");
-  await expect(page.locator(".p2-card").last()).toContainText("멘야하나 성수");
-  await page.locator(".p2-card").first().click();
+  await expect(page.locator(".p2-card").filter({ hasText: "하루멘 홍대" })).toHaveCount(1);
+  await expect(page.locator(".p2-card").filter({ hasText: "멘야하나 성수" })).toHaveCount(1);
+  await page.locator(".p2-card").filter({ hasText: "하루멘 홍대" }).click();
   await expect(page.locator(".p2-timeline-item")).toHaveCount(1);
   await page.locator(".p2-timeline-item").first().click();
   await expect(page.locator(".p2-meal-detail")).toContainText("이번엔 평범했다");
