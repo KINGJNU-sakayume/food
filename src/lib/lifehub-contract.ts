@@ -61,7 +61,7 @@ const optional = (v: unknown, max: number) =>
   v === undefined || required(v, max);
 const iso = (v: unknown) =>
   required(v, 40) && typeof v === "string" &&
-  /^\d{4}-\d{2}-\d{2}T/.test(v) && !Number.isNaN(Date.parse(v));
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(v) && !Number.isNaN(Date.parse(v));
 const dateOnly = (v: unknown) => {
   if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
   const value = new Date(v);
@@ -85,6 +85,7 @@ export function validateCandidate(input: unknown): LifeHubCandidate {
       input.schema_version !== 1 ||
       !["chatgpt", "claude", "manual"].includes(String(input.source)) ||
       !required(input.source_ref, 200) ||
+      !/^[A-Za-z0-9_.:-]{1,200}$/.test(String(input.source_ref)) ||
       !required(input.idempotency_key, 128) ||
       !/^[A-Za-z0-9_.:-]{8,128}$/.test(String(input.idempotency_key)) ||
       !iso(input.created_at) ||
