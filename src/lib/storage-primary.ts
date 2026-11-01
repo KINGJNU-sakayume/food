@@ -196,8 +196,11 @@ export async function activatePrimary(): Promise<PrimarySnapshot> {
       for (const photo of prepared) store.put(photo);
     };
     await done;
-    if (alreadyPrepared)
-      throw new Error("이미 IndexedDB 데이터가 존재합니다. 이전 전환의 상태를 확인해 주세요. 기존 데이터를 덮어쓰지 않았습니다.");
+    if (alreadyPrepared) {
+      // A previous activation may have committed the verified IDB copy
+      // before the small mode flag was written. Reuse only if the complete
+      // archive and every photo match the current legacy source below.
+    }
   } finally {
     db.close();
   }
