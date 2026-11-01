@@ -21,6 +21,8 @@ interface PrimaryManifest {
   archive: Archive;
   digest: Digest;
   legacyDigest: Digest;
+  /** Restored databases pin the exact raw legacy source, even if malformed. */
+  legacyRawDigest?: Digest;
   savedAt: string;
 }
 interface PrimaryPhoto { id: string; mime: string; blob: Blob }
@@ -37,11 +39,11 @@ function result<T>(req: IDBRequest<T>): Promise<T> {
     req.onerror = () => reject(req.error || new Error("IndexedDB 요청 오류"));
   });
 }
-async function dbOpen(): Promise<IDBDatabase> {
+async function dbOpen(name = PRIMARY_DB_NAME): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined")
     throw new Error("이 브라우저에서는 IndexedDB 저장을 지원하지 않습니다.");
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(PRIMARY_DB_NAME, 1);
+    const req = indexedDB.open(name, 1);
     req.onupgradeneeded = () => {
       const db = req.result;
       db.createObjectStore("manifest", { keyPath: "id" });
@@ -52,11 +54,14 @@ async function dbOpen(): Promise<IDBDatabase> {
     req.onblocked = () => reject(new Error("다른 탭의 저장소 연결을 닫아 주세요."));
   });
 }
-async function digest(archive: Archive): Promise<Digest> {
+async function hashText(value: string): Promise<Digest> {
   if (!crypto?.subtle) throw new Error("무결성 검증을 지원하지 않는 브라우저입니다.");
-  const payload = new TextEncoder().encode(JSON.stringify(archive));
+  const payload = new TextEncoder().encode(value);
   const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", payload));
   return Array.from(bytes, x => x.toString(16).padStart(2, "0")).join("");
+}
+async function digest(archive: Archive): Promise<Digest> {
+  return hashText(JSON.stringify(archive));
 }
 function photoBlob(id: string, encoded: string): PrimaryPhoto {
   const match = encoded.match(imagePattern);
@@ -90,8 +95,8 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
     tx.onerror = () => reject(tx.error || new Error("IndexedDB 쓰기 오류"));
   });
 }
-async function openSnapshot(): Promise<{ manifest: PrimaryManifest; photos: PrimaryPhoto[] }> {
-  const db = await dbOpen();
+async function openSnapshot(name = PRIMARY_DB_NAME): Promise<{ manifest: PrimaryManifest; photos: PrimaryPhoto[] }> {
+  const db = await dbOpen(name);
   try {
     const tx = db.transaction(["manifest", "photos"], "readonly");
     const [manifest, photos] = await Promise.all([
@@ -125,20 +130,30 @@ function legacyArchive(): Archive {
   if (!raw) throw new Error("기존 로컬 원본이 없습니다.");
   return validateArchive(JSON.parse(raw));
 }
-async function checkLegacy(currentDigest: Digest) {
-  const source = legacyArchive();
-  if (await digest(source) !== currentDigest) {
+async function checkLegacy(manifest: PrimaryManifest) {
+  const current = manifest.legacyRawDigest !== undefined
+    ? await hashText(localStorage.getItem(STORAGE_KEY) ?? "")
+    : await digest(legacyArchive());
+  if (current !== (manifest.legacyRawDigest ?? manifest.legacyDigest)) {
     throw new Error(
       "IndexedDB 활성화 이후 기존 로컬 데이터가 변경되었습니다. 자동으로 덮어쓰지 않고 저장을 중단했습니다. 별도 JSON 백업 후 충돌을 해결해 주세요.",
     );
   }
 }
+function currentDatabase(): string {
+  const mode = localStorage.getItem(PRIMARY_MODE_KEY);
+  if (mode === "on") return PRIMARY_DB_NAME;
+  if (mode?.startsWith("db:") && /^palate-storage-recovered-[0-9a-f-]{36}$/.test(mode.slice(3)))
+    return mode.slice(3);
+  throw new Error("알 수 없는 활성 저장소입니다. 기존 원본을 변경하지 마세요.");
+}
 export function primaryEnabled(): boolean {
-  return localStorage.getItem(PRIMARY_MODE_KEY) === "on";
+  // A malformed mode is NOT a reason to write over legacy data.
+  return localStorage.getItem(PRIMARY_MODE_KEY) !== null;
 }
 export async function readPrimary(): Promise<PrimarySnapshot> {
-  const { manifest, photos } = await openSnapshot();
-  await checkLegacy(manifest.legacyDigest);
+  const { manifest, photos } = await openSnapshot(currentDatabase());
+  await checkLegacy(manifest);
   return {
     archive: await reconstruct(manifest, photos),
     revision: manifest.revision,
@@ -196,19 +211,20 @@ export async function activatePrimary(): Promise<PrimarySnapshot> {
 /** IDB transaction does CAS against revision, never LWW. */
 async function compareAndSwap(
   revision: number, archive: Archive, legacyDigest: string,
-  prev: Archive,
+  prev: Archive, database: string, legacyRawDigest?: string,
 ): Promise<boolean> {
   const newDigest = await digest(archive);
   const meta: PrimaryManifest = {
     id: PRIMARY_ID, revision: revision + 1, digest: newDigest,
-    legacyDigest, savedAt: new Date().toISOString(), archive: separate(archive),
+    legacyDigest, legacyRawDigest,
+    savedAt: new Date().toISOString(), archive: separate(archive),
   };
   const before = new Map(prev.photos.map(p => [p.id, p.storage_path]));
   const after = new Map(archive.photos.map(p => [p.id, p.storage_path]));
   const added = archive.photos.filter(p => before.get(p.id) !== p.storage_path)
     .map(p => photoBlob(p.id, p.storage_path));
   const removed = [...before.keys()].filter(id => !after.has(id));
-  const db = await dbOpen();
+  const db = await dbOpen(database);
   try {
     const tx = db.transaction(["manifest", "photos"], "readwrite");
     const done = transactionDone(tx);
@@ -234,15 +250,75 @@ async function compareAndSwap(
 export async function commitPrimary(fn: (archive: Archive) => Archive): Promise<PrimarySnapshot> {
   if (!primaryEnabled()) throw new Error("IndexedDB 모드가 활성화되지 않았습니다.");
   for (let retry = 0; retry < 3; retry++) {
-    const { manifest, photos } = await openSnapshot();
-    await checkLegacy(manifest.legacyDigest);
+    const database = currentDatabase();
+    const { manifest, photos } = await openSnapshot(database);
+    await checkLegacy(manifest);
     const old = await reconstruct(manifest, photos);
     // The updater may be re-run in case of a concurrent edit in another tab.
     const next = validateArchive(fn(old));
     if (!primaryEnabled()) throw new Error("저장 모드가 변경되었습니다.");
-    if (await compareAndSwap(manifest.revision, next, manifest.legacyDigest, old)) {
+    if (await compareAndSwap(manifest.revision, next, manifest.legacyDigest, old, database, manifest.legacyRawDigest)) {
       return { archive: next, revision: manifest.revision + 1, savedAt: new Date().toISOString() };
     }
   }
   throw new Error("다른 탭에서 동시에 저장 중입니다. 새로고침 후 다시 시도해 주세요.");
+}
+
+
+/**
+ * Validated rescue export, even if the frozen legacy key has changed.
+ * This does not grant write access or acknowledge/merge legacy conflicts.
+ */
+export async function readPrimaryForRescue(): Promise<PrimarySnapshot> {
+  const { manifest, photos } = await openSnapshot(currentDatabase());
+  return {
+    archive: await reconstruct(manifest, photos),
+    revision: manifest.revision,
+    savedAt: manifest.savedAt,
+  };
+}
+
+/**
+ * A user-supplied portable JSON backup is restored into a BRAND NEW database.
+ * It never overwrites the old primary database or the frozen legacy key.
+ * Only the small active-pointer key is switched after verified round-trip.
+ */
+export async function restorePrimaryAsNewDatabase(input: Archive): Promise<PrimarySnapshot> {
+  if (!primaryEnabled()) throw new Error("IndexedDB 복구는 활성 모드에서만 사용할 수 있습니다.");
+  const archive = validateArchive(structuredClone(input));
+  const expected = await digest(archive);
+  const previousMode = localStorage.getItem(PRIMARY_MODE_KEY);
+  const legacyRaw = localStorage.getItem(STORAGE_KEY) ?? "";
+  const database = "palate-storage-recovered-" + crypto.randomUUID();
+  const manifest: PrimaryManifest = {
+    id: PRIMARY_ID,
+    revision: 1,
+    archive: separate(archive),
+    digest: expected,
+    legacyDigest: "",
+    legacyRawDigest: await hashText(legacyRaw),
+    savedAt: new Date().toISOString(),
+  };
+  const prepared = archive.photos.map(p => photoBlob(p.id, p.storage_path));
+  const db = await dbOpen(database);
+  try {
+    const tx = db.transaction(["manifest", "photos"], "readwrite");
+    const done = transactionDone(tx);
+    tx.objectStore("manifest").add(manifest);
+    for (const photo of prepared) tx.objectStore("photos").add(photo);
+    await done;
+  } finally {
+    db.close();
+  }
+  // Verify before changing the active pointer, including EVERY photo.
+  const stored = await openSnapshot(database);
+  const restored = await reconstruct(stored.manifest, stored.photos);
+  if (await digest(restored) !== expected ||
+      JSON.stringify(restored) !== JSON.stringify(archive))
+    throw new Error("복구 사본 검증이 실패했습니다. 기존 저장소를 그대로 유지합니다.");
+  if (localStorage.getItem(PRIMARY_MODE_KEY) !== previousMode ||
+      (localStorage.getItem(STORAGE_KEY) ?? "") !== legacyRaw)
+    throw new Error("복구 도중 다른 탭의 저장소가 변경됐습니다. 활성 저장소는 전환하지 않았습니다.");
+  localStorage.setItem(PRIMARY_MODE_KEY, "db:" + database);
+  return { archive: restored, revision: 1, savedAt: manifest.savedAt };
 }
