@@ -400,6 +400,8 @@ export function validateArchive(input: unknown): Archive {
       !places.has(x.place_id) ||
       !str(x.currency, 10) ||
       typeof x.available !== "boolean" ||
+      (x.reference_image_url !== undefined && !httpsUrl(x.reference_image_url)) ||
+      !optionalString(x.reference_image_credit, 200) ||
       (x.price !== undefined && (!Number.isFinite(x.price) || x.price < 0))
     )
       return fail();
