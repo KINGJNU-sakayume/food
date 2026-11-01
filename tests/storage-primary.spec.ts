@@ -187,7 +187,7 @@ test("P2-B exports the latest verified IDB copy when frozen legacy is malformed,
   await recovery.getByLabel("정상 JSON 백업 선택").setInputFiles({
     name: "palate-rescued.json", mimeType: "application/json", buffer: json,
   });
-  await expect(recovery.getByText(/선택한 백업/)).toBeVisible();
+  await expect(recovery.locator(".inline-notice").getByText(/선택한 백업:/).first()).toBeVisible();
   await recovery.getByLabel(/기존 기록과 원본을 따로 보관했고/).check();
   await recovery.getByRole("button", { name: /새 저장소에 복구/ }).click();
   await expect(recovery).toHaveCount(0);
