@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Plus, Check, ChevronDown, ImagePlus, X } from "lucide-react";
 import type {
   Archive,
@@ -28,7 +28,7 @@ export default function QuickAdd({
 }: {
   archive: Archive;
   onClose: () => void;
-  onSave: (fn: (a: Archive) => Archive) => boolean;
+  onSave: (fn: (a: Archive) => Archive) => Promise<boolean>;
   record?: EatingRecord;
   initialMenuId?: string;
   initialPlaceId?: string;
@@ -66,7 +66,9 @@ export default function QuickAdd({
   const [expanded, setExpanded] = useState(!!record),
     [suggest, setSuggest] = useState(false),
     [error, setError] = useState(""),
-    [processing, setProcessing] = useState(false);
+    [processing, setProcessing] = useState(false),
+    [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const update = <K extends keyof RecordDraft>(key: K, value: RecordDraft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
   const candidates = archive.menus
@@ -133,14 +135,21 @@ export default function QuickAdd({
     <Modal title={record ? "EDIT RECORD" : "NEW RECORD"} onClose={onClose}>
       <form
         className="quick-form"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
           if (!draft.verdict || !draft.reorder_intent) {
             setError("호·불호와 재주문 의사를 선택해 주세요.");
             return;
           }
-          if (processing) return;
-          if (onSave((a) => saveRecord(a, draft, record?.id))) onClose();
+          if (processing || savingRef.current) return;
+          savingRef.current = true;
+          setSaving(true);
+          try {
+            if (await onSave((a) => saveRecord(a, draft, record?.id))) onClose();
+          } finally {
+            savingRef.current = false;
+            setSaving(false);
+          }
         }}
       >
         <h2>{record ? "그날의 기록을 고치다." : "무엇을 먹었나요?"}</h2>
@@ -478,7 +487,7 @@ export default function QuickAdd({
         <button
           className="primary save-button"
           type="submit"
-          disabled={processing || !!similar}
+          disabled={processing || saving || !!similar}
         >
           <Check size={18} />
           {record ? "변경 저장" : "기억 저장하기"}

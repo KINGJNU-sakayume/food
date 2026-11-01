@@ -13,11 +13,15 @@ export default function Settings({
   onClose,
   onSave,
   corruptRaw,
+  primaryMode,
+  onActivatePrimary,
 }: {
   archive: Archive;
   onClose: () => void;
-  onSave: (fn: (a: Archive) => Archive) => boolean;
+  onSave: (fn: (a: Archive) => Archive) => Promise<boolean>;
   corruptRaw?: string;
+  primaryMode: boolean;
+  onActivatePrimary: () => Promise<boolean>;
 }) {
   const [name, setName] = useState(archive.user.display_name),
     [pending, setPending] = useState<Archive>(),
@@ -30,7 +34,8 @@ export default function Settings({
     [shortcut, setShortcut] = useState(false),
     [staging, setStaging] = useState(false),
     [stagingReport, setStagingReport] = useState<StagingReport>(),
-    [stagingError, setStagingError] = useState("");
+    [stagingError, setStagingError] = useState(""),
+    [switchConfirmed, setSwitchConfirmed] = useState(false);
   async function makeStagingCopy() {
     setStaging(true);
     setStagingError("");
@@ -61,8 +66,8 @@ export default function Settings({
     setError("");
     setPending(undefined);
     try {
-      if (file.size > 20 * 1024 * 1024)
-        throw new Error("20MB 이하의 JSON 파일을 선택해 주세요.");
+      if (file.size > (primaryMode ? 100 : 20) * 1024 * 1024)
+        throw new Error((primaryMode ? "100MB" : "20MB") + " 이하의 JSON 파일을 선택해 주세요.");
       setPending(validateArchive(JSON.parse(await file.text())));
     } catch (e) {
       setError(
@@ -125,10 +130,10 @@ export default function Settings({
           주세요.
         </p>
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             if (
-              onSave((a) => ({
+              await onSave((a) => ({
                 ...a,
                 user: {
                   ...a.user,
@@ -199,6 +204,7 @@ export default function Settings({
         </div>
         <div className="settings-section">
           <h3>P2 · 새 저장 구조 사전 점검</h3>
+          {primaryMode && <p className="micro">현재 IndexedDB가 기본 저장소입니다. 오래된 로컬 원본으로 검증 사본을 다시 만드는 작업은 차단했습니다.</p>}
           <p className="muted">
             현재 기록을 변경하지 않고 IndexedDB에 검사용 사본을 만듭니다.
             사진은 이미지 데이터로 분리하여 저장하고, 원본과 모든 필드·사진이
@@ -211,7 +217,7 @@ export default function Settings({
           </p>
           <button
             className="settings-action"
-            disabled={staging}
+            disabled={staging || primaryMode}
             onClick={() => { void makeStagingCopy(); }}
           >
             <span>{staging ? "사본 생성·검증 중…" : "IndexedDB 사본 생성 및 무결성 검사"}</span>
@@ -219,7 +225,7 @@ export default function Settings({
           </button>
           <button
             className="text-button"
-            disabled={staging}
+            disabled={staging || primaryMode}
             onClick={() => { void verifyExistingCopy(); }}
           >
             기존 사본만 다시 검증 <ArrowUpRight size={16} />
@@ -236,6 +242,38 @@ export default function Settings({
             </div>
           )}
           {stagingError && <p className="error" role="alert">{stagingError}</p>}
+        </div>
+        <div className="settings-section">
+          <h3>P2-B · 기본 저장소 전환</h3>
+          <p className="muted">
+            {primaryMode
+              ? "이 브라우저는 IndexedDB에 식사 데이터와 사진을 저장합니다. 기존 localStorage JSON 원본은 복구용으로 유지합니다."
+              : "검증용 사본과 원본이 일치할 때에만 IndexedDB를 주 저장소로 전환할 수 있습니다. 전환 후 새로운 기록은 기존 localStorage에 반영되지 않으며, 기존 JSON은 복구용 원본으로 보존됩니다."}
+          </p>
+          {!primaryMode && (
+            <>
+              <p className="micro">
+                반드시 먼저 JSON 백업을 외부에 보관하고, P2-A 사본 검증을 끝내 주세요.
+                다른 탭과 Safari 홈 화면 설치 앱은 닫고 진행해야 합니다.
+              </p>
+              <label className="checkbox">
+                <input type="checkbox" checked={switchConfirmed} onChange={e => setSwitchConfirmed(e.target.checked)} />
+                별도 JSON 백업을 보관했고, 기존 저장 키가 보존된다는 점을 확인했습니다.
+              </label>
+              <button className="settings-action" disabled={!switchConfirmed || staging} onClick={async () => {
+                setStaging(true);
+                try {
+                  if (await onActivatePrimary()) {
+                    setNotice("기본 저장소를 IndexedDB로 전환했습니다. 재접속 시에도 상태를 확인합니다.");
+                    setSwitchConfirmed(false);
+                  }
+                } finally { setStaging(false); }
+              }}>
+                <span>{staging ? "저장 구조 전환 중…" : "검증된 사본으로 기본 저장소 전환"}</span>
+                <ArrowUpRight size={17}/>
+              </button>
+            </>
+          )}
         </div>
         <div className="settings-section">
           <h3>백업 불러오기</h3>
@@ -271,8 +309,8 @@ export default function Settings({
               <div className="button-row">
                 <button
                   className="primary"
-                  onClick={() => {
-                    if (onSave(() => pending)) {
+                  onClick={async () => {
+                    if (await onSave(() => pending)) {
                       setPending(undefined);
                       onClose();
                     }
@@ -310,7 +348,7 @@ export default function Settings({
               보관함은 계속 이 브라우저에 저장됩니다.
             </p>
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 setError("");
                 if (endpoint.trim() && !httpsUrl(endpoint.trim())) {
@@ -318,7 +356,7 @@ export default function Settings({
                   return;
                 }
                 if (
-                  onSave((a) => ({
+                  await onSave((a) => ({
                     ...a,
                     preferences: {
                       ...a.preferences,
@@ -382,8 +420,8 @@ export default function Settings({
               <div className="button-row">
                 <button
                   className="danger-button"
-                  onClick={() => {
-                    if (onSave(() => emptyArchive())) onClose();
+                  onClick={async () => {
+                    if (await onSave(() => emptyArchive())) onClose();
                   }}
                 >
                   모든 데이터 삭제

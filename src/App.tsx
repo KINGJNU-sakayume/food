@@ -37,6 +37,7 @@ import {
   Places,
 } from "./pages/ArchivePages";
 import { ArchiveV2, JournalV2, ChooseV2, PlaceV2, DishV2, MealV2 } from "./pages/PalateV2";
+import { activatePrimary, commitPrimary, primaryEnabled, PRIMARY_MODE_KEY, readPrimary, readPrimaryForRescue, restorePrimaryAsNewDatabase } from "./lib/storage-primary";
 
 function load() {
   let raw: string | undefined;
@@ -59,6 +60,8 @@ function load() {
 export default function App() {
   const [boot] = useState(load),
     [archive, setArchive] = useState(boot.archive),
+    [primaryMode, setPrimaryMode] = useState(primaryEnabled),
+    [storageReady, setStorageReady] = useState(!primaryEnabled()),
     [recovery, setRecovery] = useState(boot.error),
     [corruptRaw, setCorruptRaw] = useState(boot.raw),
     [route, setRoute] = useState(location.hash || "#/collection"),
@@ -77,8 +80,12 @@ export default function App() {
     [deletingPlace, setDeletingPlace] = useState<string>(),
     [demoConfirm, setDemoConfirm] = useState(false),
     [demoLoading, setDemoLoading] = useState(false),
-    [restore, setRestore] = useState<Archive>();
+    [restore, setRestore] = useState<Archive>(),
+    [recoveryConfirmed, setRecoveryConfirmed] = useState(false),
+    [rescueBusy, setRescueBusy] = useState(false),
+    [rescueError, setRescueError] = useState("");
   const archiveRef = useRef(archive),
+    broadcasts = useRef<BroadcastChannel | null>(null),
     timer = useRef<ReturnType<typeof setTimeout>>();
   const notify = (message: string) => {
     setToast(message);
@@ -95,7 +102,42 @@ export default function App() {
     return () => window.removeEventListener("hashchange", change);
   }, []);
   useEffect(() => {
+    if (!primaryMode) return;
+    let cancelled = false;
+    void readPrimary().then(({ archive: fresh }) => {
+      if (cancelled) return;
+      archiveRef.current = fresh;
+      setArchive(fresh);
+      setRecovery("");
+    }).catch((e) => {
+      if (!cancelled) setRecovery("IndexedDB 읽기·무결성 검사 실패: " + (e as Error).message);
+    }).finally(() => { if (!cancelled) setStorageReady(true); });
+    return () => { cancelled = true; };
+  }, [primaryMode]);
+  useEffect(() => {
+    if (!primaryMode || typeof BroadcastChannel === "undefined") return;
+    const bc = new BroadcastChannel("palate-primary-notify");
+    broadcasts.current = bc;
+    bc.onmessage = () => {
+      void readPrimary().then(({ archive: fresh }) => {
+        archiveRef.current = fresh;
+        setArchive(fresh);
+        setSyncRevision(v => v + 1);
+        notify("다른 탭의 변경된 기록을 불러왔습니다.");
+      }).catch((e) => setRecovery("저장소 변경을 확인하지 못했습니다: " + (e as Error).message));
+    };
+    return () => { bc.close(); broadcasts.current = null; };
+  }, [primaryMode]);
+  useEffect(() => {
     const sync = (event: StorageEvent) => {
+      if (event.key === PRIMARY_MODE_KEY) {
+        setRecovery("다른 탭에서 저장 방식이 변경되었습니다. 페이지를 새로고침해 주세요.");
+        return;
+      }
+      if (primaryEnabled() && (event.key === STORAGE_KEY || event.key === null)) {
+        setRecovery("기존 로컬 원본이 다른 탭에서 변경됐습니다. 자동 저장을 중단했습니다.");
+        return;
+      }
       if (event.key !== STORAGE_KEY && event.key !== null) return;
       try {
         const a = event.newValue
@@ -123,12 +165,22 @@ export default function App() {
       clearTimeout(timer.current);
     };
   }, []);
-  function commit(
+  async function commit(
     fn: (a: Archive) => Archive,
     message: string | false = "아카이브에 저장했습니다.",
-  ): boolean {
+  ): Promise<boolean> {
     try {
-      if (recovery) throw new Error("먼저 아카이브 복구를 완료해 주세요.");
+      if (!storageReady || recovery) throw new Error("먼저 아카이브 복구·불러오기를 완료해 주세요.");
+      if (primaryMode) {
+        const saved = await commitPrimary(fn);
+        archiveRef.current = saved.archive;
+        setArchive(saved.archive);
+        broadcasts.current?.postMessage({ revision: saved.revision });
+        setError("");
+        if (message) notify(message);
+        return true;
+      }
+      if (primaryEnabled()) throw new Error("저장 방식이 전환됐습니다. 새로고침해 주세요.");
       // Read the latest saved value before applying an incoming share or edit.
       // Another tab may have saved a link before its storage event arrives.
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -147,8 +199,24 @@ export default function App() {
       return false;
     }
   }
-  function recover(next: Archive) {
+  async function recover(next: Archive) {
     try {
+      if (primaryMode) {
+        if (!recoveryConfirmed) throw new Error("복구 전 백업 보관 확인이 필요합니다.");
+        const result = await restorePrimaryAsNewDatabase(next);
+        archiveRef.current = result.archive;
+        setArchive(result.archive);
+        setRecovery("");
+        setCorruptRaw(undefined);
+        setRestore(undefined);
+        setRecoveryConfirmed(false);
+        setRescueError("");
+        setError("");
+        broadcasts.current?.postMessage({ revision: result.revision });
+        notify("별도의 IndexedDB에 백업을 검증하고 복구했습니다. 기존 데이터는 삭제하지 않았습니다.");
+        return;
+      }
+      if (primaryEnabled()) throw new Error("저장 방식이 변경되었습니다. 새로고침해 주세요.");
       persistArchive(next);
       archiveRef.current = next;
       setArchive(next);
@@ -158,6 +226,22 @@ export default function App() {
       setError("");
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+  async function enablePrimary() {
+    if (!storageReady || recovery) return false;
+    try {
+      const ready = await activatePrimary();
+      archiveRef.current = ready.archive;
+      setArchive(ready.archive);
+      setPrimaryMode(true);
+      setStorageReady(true);
+      setError("");
+      notify("IndexedDB 전환 완료. 기존 localStorage 원본은 그대로 보존했습니다.");
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
     }
   }
   const routeUrl = new URL(
@@ -191,6 +275,7 @@ export default function App() {
         normalize(query),
       ),
   );
+  if (!storageReady) return <div className="app"><main role="status">개인 아카이브 저장소를 확인하고 있습니다…</main></div>;
   return (
     <div className="app">
       <a
@@ -373,6 +458,8 @@ export default function App() {
           onClose={() => setSettings(false)}
           onSave={commit}
           corruptRaw={corruptRaw}
+          primaryMode={primaryMode}
+          onActivatePrimary={enablePrimary}
         />
       )}
       {search && (
@@ -493,7 +580,7 @@ export default function App() {
                   setDemoLoading(true);
                   try {
                     const sample = await loadDemo();
-                    if (commit(() => sample)) setDemoConfirm(false);
+                    if (await commit(() => sample)) setDemoConfirm(false);
                   } catch (e) {
                     setError((e as Error).message);
                   } finally {
@@ -527,8 +614,8 @@ export default function App() {
             <div className="button-row">
               <button
                 className="danger-button"
-                onClick={() => {
-                  if (commit((a) => removeRecord(a, deleting.id)))
+                onClick={async () => {
+                  if (await commit((a) => removeRecord(a, deleting.id)))
                     setDeleting(undefined);
                 }}
               >
@@ -555,8 +642,8 @@ export default function App() {
             <div className="button-row">
               <button
                 className="danger-button"
-                onClick={() => {
-                  if (commit((a) => removePlace(a, deletingPlace))) {
+                onClick={async () => {
+                  if (await commit((a) => removePlace(a, deletingPlace))) {
                     setDeletingPlace(undefined);
                     location.hash = "/places";
                   }
@@ -579,20 +666,44 @@ export default function App() {
           <div className="confirm-content">
             <h2>기록을 먼저 보관해 주세요.</h2>
             <p>{recovery}</p>
-            {corruptRaw && (
+            <p className="micro">
+              {primaryMode
+                ? "IndexedDB 활성 상태입니다. 오래된 localStorage 원본을 사용해 자동 복원하지 않습니다. 최신 데이터를 먼저 내보내고 별도 백업을 확인하세요."
+                : "기존 localStorage 저장소에서 복구 중입니다."}
+            </p>
+            {(corruptRaw || localStorage.getItem(STORAGE_KEY) !== null) && (
               <button
-                className="primary"
-                onClick={() =>
-                  download(
-                    `palate-recovery-${today()}.txt`,
-                    corruptRaw,
-                    "text/plain",
-                  )
-                }
+                className="text-button"
+                onClick={() => {
+                  const raw = localStorage.getItem(STORAGE_KEY) ?? corruptRaw;
+                  if (raw) download("palate-legacy-evidence-" + today() + ".txt", raw, "text/plain");
+                }}
               >
-                <Download size={17} />
-                저장 원본 내려받기
+                <Download size={17} /> 현재 로컬 원본 별도 보관
               </button>
+            )}
+            {primaryMode && (
+              <>
+                <button className="primary" disabled={rescueBusy} onClick={async () => {
+                  setRescueBusy(true);
+                  setRescueError("");
+                  try {
+                    const result = await readPrimaryForRescue();
+                    download("palate-idb-rescue-" + today() + ".json", JSON.stringify(result.archive, null, 2));
+                  } catch (e) {
+                    setRescueError("검증된 IndexedDB 백업을 만들지 못했습니다: " + (e as Error).message);
+                  } finally {
+                    setRescueBusy(false);
+                  }
+                }}>
+                  <Download size={17} /> {rescueBusy ? "IndexedDB 검증 중…" : "검증된 최신 IndexedDB 기록 내보내기"}
+                </button>
+                <p className="micro">
+                  기존 로컬 원본과 충돌해도, IndexedDB 사본의 모든 기록·사진이 무결하면 별도 JSON으로 내려받을 수 있습니다.
+                  실패한 경우 임의로 초기화하지 마세요. 기존 데이터베이스는 그대로 남습니다.
+                </p>
+                {rescueError && <p role="alert" className="error">{rescueError}</p>}
+              </>
             )}
             <label className="field">
               <span>정상 JSON 백업 선택</span>
@@ -603,8 +714,10 @@ export default function App() {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   try {
-                    if (file.size > 20 * 1024 * 1024)
-                      throw new Error("20MB 이하 파일을 선택해 주세요.");
+                    setRecoveryConfirmed(false);
+                    const maximum = primaryMode ? 100 : 20;
+                    if (file.size > maximum * 1024 * 1024)
+                      throw new Error(maximum + "MB 이하 파일을 선택해 주세요.");
                     setRestore(validateArchive(JSON.parse(await file.text())));
                     setError("");
                   } catch {
@@ -614,24 +727,45 @@ export default function App() {
               />
             </label>
             {restore && (
-              <button className="primary" onClick={() => recover(restore)}>
-                식사 {restore.records.length}건의 백업으로 복원
+              <div className="inline-notice">
+                <p>
+                  선택한 백업: <strong>{restore.user.display_name}</strong> ·
+                  식사 {restore.records.length}건 · 사진 {restore.photos.length}장
+                </p>
+                {primaryMode && (
+                  <>
+                    <p className="micro">
+                      백업을 새로운 IndexedDB에 기록하고 검증한 뒤 활성 저장소를 변경합니다.
+                      이전 IndexedDB와 기존 localStorage 원본은 삭제하지 않습니다.
+                      복구 후에는 선택한 백업에 포함된 기록만 화면에 나타납니다.
+                    </p>
+                    <label className="field">
+                      <span>
+                        <input type="checkbox" checked={recoveryConfirmed}
+                          onChange={e => setRecoveryConfirmed(e.target.checked)} />
+                        기존 기록과 원본을 따로 보관했고, 선택한 백업으로 전환하는 데 동의합니다.
+                      </span>
+                    </label>
+                  </>
+                )}
+                <button className="primary" disabled={primaryMode && !recoveryConfirmed}
+                  onClick={() => { void recover(restore); }}>
+                  식사 {restore.records.length}건의 백업으로 {primaryMode ? "새 저장소에 복구" : "복원"}
+                </button>
+              </div>
+            )}
+            {!primaryMode && (
+              <button
+                className="text-button danger"
+                onClick={() => {
+                  if (corruptRaw)
+                    download("palate-recovery-" + today() + ".txt", corruptRaw, "text/plain");
+                  void recover(emptyArchive());
+                }}
+              >
+                원본을 내려받고 새로 시작
               </button>
             )}
-            <button
-              className="text-button danger"
-              onClick={() => {
-                if (corruptRaw)
-                  download(
-                    `palate-recovery-${today()}.txt`,
-                    corruptRaw,
-                    "text/plain",
-                  );
-                recover(emptyArchive());
-              }}
-            >
-              원본을 내려받고 새로 시작
-            </button>
             <p className="micro">원본은 선택 전까지 덮어쓰지 않습니다.</p>
           </div>
         </Modal>

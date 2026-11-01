@@ -684,7 +684,7 @@ export function MenuDetail({
   onAdd: Add;
   onEdit: (r: EatingRecord) => void;
   onDelete: (r: EatingRecord) => void;
-  onUpdate: (fn: (a: Archive) => Archive) => boolean;
+  onUpdate: (fn: (a: Archive) => Archive) => Promise<boolean>;
 }) {
   const menu = archive.menus.find((m) => m.id === menuId),
     [edit, setEdit] = useState(false),
@@ -783,10 +783,10 @@ export function MenuDetail({
           {edit && (
             <form
               className="menu-edit"
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 if (
-                  onUpdate((a) =>
+                  await onUpdate((a) =>
                     updateMenuInfo(a, menu.id, name, category, brandName),
                   )
                 )
@@ -888,7 +888,7 @@ export function Places({
 }: {
   archive: Archive;
   selectedId?: string;
-  onUpdate: (fn: (a: Archive) => Archive) => boolean;
+  onUpdate: (fn: (a: Archive) => Archive) => Promise<boolean>;
   onDeletePlace: (id: string) => void;
 }) {
   const [query, setQuery] = useState(""),
@@ -944,10 +944,10 @@ export function Places({
           {edit && (
             <form
               className="place-edit"
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 if (
-                  onUpdate((a) =>
+                  await onUpdate((a) =>
                     brand
                       ? {
                           ...a,
