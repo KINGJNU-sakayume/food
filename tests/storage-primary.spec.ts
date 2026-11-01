@@ -1,0 +1,95 @@
+import { test, expect } from "@playwright/test";
+
+const KEY = "palate.archive.v1";
+async function addMeal(page: import("@playwright/test").Page, name: string, withImage = false) {
+  await page.getByRole("button", { name: "기록하기", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("메뉴 필수").fill(name);
+  await dialog.getByRole("button", { name: "+ 호", exact: true }).click();
+  await dialog.getByRole("button", { name: "다시 먹는다", exact: true }).click();
+  if (withImage) {
+    await dialog.getByRole("button", { name: "장소, 날짜, 사진과 더 자세한 기록" }).click();
+    const buffer = Buffer.from(await page.evaluate(() => {
+      const c = document.createElement("canvas"); c.width = 50; c.height = 40;
+      const context = c.getContext("2d")!;
+      context.fillStyle = "#b0a07c"; context.fillRect(0, 0, c.width, c.height);
+      return c.toDataURL("image/png").split(",")[1];
+    }), "base64");
+    await dialog.locator('input[type="file"]').setInputFiles({
+      name: "meal.png", mimeType: "image/png", buffer,
+    });
+    await expect(dialog.getByAltText("첨부 사진 1")).toBeVisible();
+  }
+  await dialog.getByRole("button", { name: "기억 저장하기" }).click();
+  await expect(dialog).toHaveCount(0);
+}
+async function activate(page: import("@playwright/test").Page) {
+  await page.getByRole("button", { name: "아카이브 설정과 백업" }).click();
+  await page.getByRole("button", { name: "IndexedDB 사본 생성 및 무결성 검사" }).click();
+  await expect(page.getByText("사본 검증 성공")).toBeVisible();
+  await page.getByText("별도 JSON 백업을 보관했고").click();
+  await page.getByRole("button", { name: "검증된 사본으로 기본 저장소 전환" }).click();
+  await expect(page.getByText("이 브라우저는 IndexedDB에 식사 데이터와 사진을 저장합니다.")).toBeVisible();
+  await page.getByRole("button", { name: "닫기", exact: true }).click();
+}
+
+test("P2-B opt-in primary uses blobs and preserves legacy JSON exactly after writes and reload", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", err => errors.push(err.message));
+  await page.goto("/");
+  await addMeal(page, "전환 전 파스타", true);
+  const raw = await page.evaluate(key => localStorage.getItem(key), KEY);
+  const source = JSON.parse(raw!);
+  expect(source.photos).toHaveLength(1);
+  await activate(page);
+  expect(await page.evaluate(() => localStorage.getItem("palate.storage.primary.v1"))).toBe("on");
+  const primary = await page.evaluate(async () => {
+    const req = indexedDB.open("palate-storage-primary-v1");
+    const db = await new Promise<IDBDatabase>((res, rej) => {
+      req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error);
+    });
+    try {
+      const tx = db.transaction(["manifest", "photos"], "readonly");
+      const imageRequest = tx.objectStore("photos").getAll();
+      const manifestRequest = tx.objectStore("manifest").get("active");
+      const photos: { blob: Blob }[] = await new Promise((res, rej) => {
+        imageRequest.onsuccess = () => res(imageRequest.result); imageRequest.onerror = () => rej(imageRequest.error);
+      });
+      const manifest: { archive: {photos: {storage_path: string}[]}, revision: number } =
+        await new Promise((res, rej) => {
+          manifestRequest.onsuccess = () => res(manifestRequest.result);
+          manifestRequest.onerror = () => rej(manifestRequest.error);
+        });
+      return { blob: photos[0].blob instanceof Blob, count: photos.length, path: manifest.archive.photos[0].storage_path, revision: manifest.revision };
+    } finally { db.close(); }
+  });
+  expect(primary).toMatchObject({blob:true, count:1, path:"", revision:1});
+  await addMeal(page, "전환 후 라멘");
+  await expect(page.locator(".p2-card")).toHaveCount(2);
+  expect(await page.evaluate(key => localStorage.getItem(key), KEY)).toBe(raw);
+  await page.reload();
+  await expect(page.locator(".p2-card")).toHaveCount(2);
+  await expect(page.locator(".p2-card").filter({hasText:"전환 후 라멘"})).toHaveCount(1);
+  await page.getByRole("button", { name: "아카이브 설정과 백업" }).click();
+  const wait = page.waitForEvent("download");
+  await page.getByRole("button", { name: "JSON 백업" }).click();
+  const file = await wait;
+  const stream = await file.createReadStream();
+  const buffers: Buffer[] = [];
+  for await (const chunk of stream) buffers.push(Buffer.from(chunk));
+  const backup = JSON.parse(Buffer.concat(buffers).toString("utf8"));
+  expect(backup.records).toHaveLength(2);
+  expect(backup.photos).toHaveLength(1);
+  expect(backup.photos[0].storage_path).toMatch(/^data:image\/webp;base64,/);
+  expect(await page.evaluate(key => localStorage.getItem(key), KEY)).toBe(raw);
+  expect(errors).toEqual([]);
+});
+test("P2-B notices changed frozen legacy source and blocks subsequent writes", async ({ page }) => {
+  await page.goto("/");
+  await addMeal(page, "첫 메뉴");
+  await activate(page);
+  await page.evaluate(key => localStorage.setItem(key, JSON.stringify({ invalid: true })), KEY);
+  await page.reload();
+  await expect(page.getByText(/IndexedDB 읽기·무결성 검사 실패/)).toBeVisible();
+  expect(await page.evaluate(key => localStorage.getItem(key), KEY)).toContain("invalid");
+});
