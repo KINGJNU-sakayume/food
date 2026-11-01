@@ -84,7 +84,7 @@ export function ArchiveV2({ archive, onAdd, onDemo }: { archive: Archive; onAdd:
     <div className="p2-page">
       <Title eyebrow="MY FOOD ARCHIVE" title="먹어온 것들." caption={"메뉴 " + all.length + "종류 · 식사 " + archive.records.length + "번. 같은 메뉴도 가게별로 구분합니다."} />
       {!all.length ? (
-        <div className="p2-empty"><Empty title="첫 식사의 기록을 기다리고 있어요." description="메뉴와 가게, 사진을 하나씩 쌓아 보세요." onAdd={() => onAdd()} /><button className="p2-link" onClick={onDemo}>예시 기록으로 살펴보기 <ArrowRight size={17}/></button></div>
+        <div className="p2-empty"><Empty title="첫 식사의 기록을 기다리고 있어요." description="메뉴와 가게, 사진을 하나씩 쌓아 보세요."/><div className="p2-actions"><button className="primary" onClick={() => onAdd()}><Plus size={17}/> 첫 식사 기록하기</button>{!archive.brands.length && !archive.places.length && !archive.saved_links.length && <button className="p2-link" onClick={onDemo}>예시 아카이브 둘러보기 <ArrowRight size={17}/></button>}</div></div>
       ) : (
         <>
           <div className="p2-toolbar">
