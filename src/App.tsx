@@ -10,6 +10,7 @@ import {
   LayoutGrid,
   Compass,
   BookOpen,
+  Inbox,
 } from "lucide-react";
 import type { Archive, EatingRecord } from "./types/model";
 import {
@@ -28,6 +29,7 @@ import { loadDemo } from "./lib/demo";
 import { Modal, dateLabel, Empty } from "./components/Common";
 import QuickAdd from "./components/QuickAdd";
 import Settings from "./components/Settings";
+import LifeHubInboxPage from "./pages/LifeHubInboxPage";
 import ChoosePage, { ReceiveShare } from "./pages/ChoosePage";
 import {
   Collection,
@@ -319,6 +321,7 @@ export default function App() {
           })}
         </nav>
         <div className="header-actions">
+          <a href="#/inbox" className="icon-button" title="Life Hub 기록 후보함" aria-label="Life Hub 기록 후보함"><Inbox size={20}/></a>
           <button
             className="icon-button"
             aria-label="전체 검색"
@@ -379,6 +382,8 @@ export default function App() {
           />
         ) : page === "journal" ? (
           <JournalV2 archive={archive} onAdd={add} />
+        ) : page === "inbox" ? (
+          <LifeHubInboxPage archive={archive} onSave={commit} />
         ) : page === "legacy-collection" ? (
           <Collection archive={archive} onAdd={add} onDemo={() => setDemoConfirm(true)} />
         ) : page === "legacy-journal" ? (
