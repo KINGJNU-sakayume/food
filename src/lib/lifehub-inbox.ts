@@ -35,6 +35,39 @@ export function enqueueCandidate(
     result: "inserted", key,
   };
 }
+export interface RemoteState {
+  /** Hub revision of this candidate (0 = never edited). */
+  revision: number;
+  status: "pending" | "approved";
+  needs_app_review: boolean;
+}
+/**
+ * A candidate pulled from Life Hub (`final_candidate ?? candidate`). Like enqueue, but a pending local copy
+ * follows a NEWER hub revision (the owner edited it in a Claude card) and records the hub status. Same
+ * revision with different content is still a conflict; confirmed and rejected entries never change.
+ */
+export function upsertRemoteCandidate(
+  previous: CandidateEnvelope[], untrusted: unknown, remote: RemoteState, receivedAt: string,
+): EnqueueResult {
+  const candidate = validateCandidate(untrusted);
+  const key = candidateKey(candidate);
+  if (!Number.isSafeInteger(remote.revision) || remote.revision < 0 || !["pending", "approved"].includes(remote.status))
+    throw new Error("Life Hub 후보 상태를 확인할 수 없습니다.");
+  const state = { hub_revision: remote.revision, hub_status: remote.status, needs_app_review: remote.needs_app_review === true };
+  const existing = previous.find(entry => entry.key === key);
+  if (!existing) {
+    const inserted = enqueueCandidate(previous, candidate, receivedAt);
+    return { ...inserted, entries: inserted.entries.map(e => e.key === key ? { ...e, ...state } : e) };
+  }
+  if (existing.status !== "pending") return { entries: previous, result: "duplicate", key };
+  const known = existing.hub_revision ?? 0;
+  if (remote.revision < known) return { entries: previous, result: "duplicate", key };
+  if (remote.revision === known && !sameCandidate(existing.candidate, candidate))
+    throw new Error("같은 Life Hub 요청 키에 서로 다른 내용이 들어왔습니다. 기존 후보를 덮어쓰지 않습니다.");
+  const next = { ...existing, ...state, candidate: remote.revision > known ? candidate : existing.candidate };
+  if (JSON.stringify(next) === JSON.stringify(existing)) return { entries: previous, result: "duplicate", key };
+  return { entries: previous.map(e => e.key === key ? next : e), result: "duplicate", key };
+}
 export function rejectCandidate(
   previous: CandidateEnvelope[], key: string, reviewedAt: string,
 ): CandidateEnvelope[] {

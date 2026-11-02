@@ -16,8 +16,9 @@ import type { Archive } from "../types/model.js";
 import {
   LIFEHUB_CLIENT_ID, LIFEHUB_ORIGIN, LIFEHUB_RESOURCE, LIFEHUB_SCOPE, PALATE_APP_URL,
 } from "./lifehub-config.js";
-import { addLocalCandidate, readLocalInbox } from "./lifehub-local.js";
-import { validateCandidate } from "./lifehub-contract.js";
+import { readLocalInbox, upsertRemoteLocalCandidate } from "./lifehub-local.js";
+import { validateCandidate, type LifeHubCandidate } from "./lifehub-contract.js";
+import { reviewFromCandidate } from "./lifehub-approval.js";
 
 type KV = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 export interface RemoteDeps {
@@ -49,6 +50,7 @@ const TOKENS_KEY = "palate.lifehub.remote.v1";
 const PENDING_AUTH_KEY = "palate.lifehub.pending-auth.v1";
 const remoteKeysKey = (userId: string) => "palate.lifehub.remote-keys.v1." + userId;
 const outcomesKey = (userId: string) => "palate.lifehub.remote-outcomes.v1." + userId;
+const AUTO_APPLY_KEY = "palate.lifehub.auto-apply.v1";
 const AUTH_MAX_AGE_MS = 10 * 60 * 1000;
 
 interface Tokens { access_token: string; access_expires_at: number; refresh_token: string; connected_at: string }
@@ -186,19 +188,30 @@ export function remoteOutcomes(archive: Archive, deps: Pick<RemoteDeps, "storage
   return map && typeof map === "object" && !Array.isArray(map) ? map : {};
 }
 
-export interface SyncSummary { imported: number; receiptsSent: number; rejectionsSent: number; conflicts: number; waiting: number }
+/** 「Claude에서 승인된 항목 자동 반영」: on unless the owner turned it off on this device. */
+export function autoApplyEnabled(deps: Pick<RemoteDeps, "storage">): boolean {
+  return deps.storage.getItem(AUTO_APPLY_KEY) !== "off";
+}
+export function setAutoApply(deps: Pick<RemoteDeps, "storage">, on: boolean): void {
+  if (on) deps.storage.removeItem(AUTO_APPLY_KEY); else deps.storage.setItem(AUTO_APPLY_KEY, "off");
+}
 
-/**
- * Push outcomes first (so Life Hub stops listing what PALATE already decided), then pull pending.
- * Safe to call repeatedly; every step is idempotent on both sides.
- */
-export async function syncWithLifeHub(archive: Archive, deps: RemoteDeps): Promise<SyncSummary> {
+export interface PushSummary { receiptsSent: number; rejectionsSent: number; waiting: number }
+export interface SyncSummary extends PushSummary {
+  imported: number; conflicts: number;
+  /** Approved in a Claude card, complete, and allowed to be saved without asking (auto-apply on). */
+  autoApply: Array<{ key: string; candidate: LifeHubCandidate }>;
+  /** Approved in a Claude card but waiting for the owner in the inbox (needs review, incomplete, or auto-apply off). */
+  approvedWaiting: number;
+}
+
+/** Sends receipts and local rejections Life Hub has not acknowledged yet. Idempotent. */
+export async function pushOutcomes(archive: Archive, deps: RemoteDeps): Promise<PushSummary> {
   const userId = archive.user.id;
   const keys = remoteKeys(archive, deps);
   const outcomes = remoteOutcomes(archive, deps);
   const saveOutcomes = () => deps.storage.setItem(outcomesKey(userId), JSON.stringify(outcomes));
-  const summary: SyncSummary = { imported: 0, receiptsSent: 0, rejectionsSent: 0, conflicts: 0, waiting: 0 };
-
+  const summary: PushSummary = { receiptsSent: 0, rejectionsSent: 0, waiting: 0 };
   const decide = async (key: string, response: Response, ok: OutcomeState) => {
     if (response.ok) outcomes[key] = ok;
     else if (response.status === 409) outcomes[key] = "conflict";
@@ -218,26 +231,49 @@ export async function syncWithLifeHub(archive: Archive, deps: RemoteDeps): Promi
     await decide(entry.key, response, "rejected");
     if (response.ok) summary.rejectionsSent++;
   }
+  return summary;
+}
 
-  const response = await api(deps, "GET", "/candidates?status=pending&limit=100");
+/**
+ * Push outcomes first (so Life Hub stops listing what PALATE already decided), then pull open candidates
+ * (pending + approved in a Claude card). Each item uses the owner's edited version when there is one.
+ * Nothing is saved here: approved items that may be saved without asking are returned in `autoApply`.
+ * Safe to call repeatedly; every step is idempotent on both sides.
+ */
+export async function syncWithLifeHub(archive: Archive, deps: RemoteDeps): Promise<SyncSummary> {
+  const userId = archive.user.id;
+  const pushed = await pushOutcomes(archive, deps);
+  const keys = remoteKeys(archive, deps);
+  const summary: SyncSummary = { ...pushed, imported: 0, conflicts: 0, autoApply: [], approvedWaiting: 0 };
+
+  const response = await api(deps, "GET", "/candidates?status=open&limit=100");
   if (!response.ok) throw new LifeHubError("server", "Life Hub 후보를 가져오지 못했어요 (" + response.status + ")");
   const body = await response.json().catch(() => null) as { candidates?: unknown } | null;
   if (!body || !Array.isArray(body.candidates)) throw new LifeHubError("server", "Life Hub 응답 형식이 올바르지 않아요.");
-  const valid: unknown[] = [];
-  for (const item of body.candidates) {
-    try { valid.push(validateCandidate((item as { candidate?: unknown }).candidate)); } catch { /* skip malformed items */ }
-  }
-  for (const candidate of valid) {
+  const receipts = new Set((archive.lifehub_receipts || []).map(r => r.key));
+  const autoOn = autoApplyEnabled(deps);
+  for (const raw of body.candidates) {
+    const item = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    let candidate: LifeHubCandidate;
+    try { candidate = validateCandidate(item.final_candidate ?? item.candidate); } catch { continue; /* skip malformed items */ }
+    const status = item.status === "approved" ? "approved" : item.status === "pending" ? "pending" : null;
+    if (!status) continue;
+    const revision = Number.isSafeInteger(item.revision) && (item.revision as number) >= 0 ? item.revision as number : 0;
+    const needsReview = item.needs_app_review === true;
     try {
-      const result = addLocalCandidate(archive, candidate, deps.storage);
+      const result = upsertRemoteLocalCandidate(archive, candidate, { revision, status, needs_app_review: needsReview }, deps.storage);
       keys.add(result.key);
       if (result.result === "inserted") summary.imported++;
+      const local = result.entries.find(e => e.key === result.key);
+      if (status !== "approved" || !local || local.status !== "pending" || receipts.has(result.key)) continue;
+      if (autoOn && !needsReview && reviewFromCandidate(local.candidate)) summary.autoApply.push({ key: result.key, candidate: local.candidate });
+      else summary.approvedWaiting++;
     } catch {
-      // Same key with different content: the local entry is kept and nothing is overwritten.
+      // Same key and revision with different content: the local entry is kept and nothing is overwritten.
       summary.conflicts++;
     }
   }
   deps.storage.setItem(remoteKeysKey(userId), JSON.stringify([...keys]));
-  summary.conflicts += Object.values(outcomes).filter((v) => v === "conflict").length;
+  summary.conflicts += Object.values(remoteOutcomes(archive, deps)).filter((v) => v === "conflict").length;
   return summary;
 }

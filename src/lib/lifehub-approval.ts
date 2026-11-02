@@ -119,3 +119,21 @@ export function approveCandidate(
   }];
   return { archive: validateArchive(next), entity_id, duplicate: false };
 }
+
+/**
+ * The review PALATE would save for a candidate the owner already approved in a Claude card, or null when
+ * PALATE's own rules need something the candidate lacks (a meal needs the date, verdict and reorder intent).
+ * Null means: keep it in the inbox for the owner to finish, never guess.
+ */
+export function reviewFromCandidate(untrusted: unknown): CandidateReview | null {
+  const candidate = validateCandidate(untrusted);
+  if (candidate.candidate_type === "meal") {
+    const p = candidate.payload;
+    if (!p.eaten_at || !p.verdict || !p.reorder_intent) return null;
+    return {
+      candidate_type: "meal", menu_name: p.menu_name, place_name: p.place_name ?? "", address: "",
+      eaten_at: p.eaten_at, verdict: p.verdict, reorder_intent: p.reorder_intent, note: p.note ?? "",
+    };
+  }
+  return { candidate_type: "wish", name: candidate.payload.name, address: "", source_url: candidate.payload.source_url };
+}

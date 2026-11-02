@@ -11,6 +11,14 @@ PALATE는 Life Hub의 OAuth 공개 클라이언트로 연결된다. 클라이언
 5. 전송 실패 시 아웃박스로 남아 다음 동기화 때 다시 보낸다. Life Hub와 상태가 다르면(409) 재시도를 멈추고 표시만 하며, **PALATE의 기록은 그대로 유지**한다.
 6. Life Hub에서 가져온 후보만 결과를 보낸다. 직접 붙여 넣은 JSON 후보는 서버로 보내지 않는다.
 
+### Claude 카드에서 승인한 항목 (Life Hub P4 2단계)
+
+- 동기화는 `GET /palate/v1/candidates?status=open`(대기 + Claude 카드에서 승인됨)이다. 항목마다 `final_candidate ?? candidate`(카드에서 고친 내용 우선)를 쓰고, 같은 계약 검증을 다시 통과해야 한다.
+- 로컬 후보가 아직 대기 중이면 더 새 `revision`만 따라간다. 같은 revision인데 내용이 다르면 충돌로 두고 덮어쓰지 않는다. 확정·거절된 항목은 바꾸지 않는다.
+- **자동 반영**: `status=approved`, `needs_app_review=false`, 설정 「Claude에서 승인된 항목 자동 반영」(후보함, 기본 켜짐, 기기별 `palate.lifehub.auto-apply.v1`)이 켜져 있고, PALATE 저장 규칙상 필수값이 다 있을 때(식사는 날짜·호불호·재주문 의사)만, 앱을 열 때 기존 승인과 같은 트랜잭션(`approveCandidate` + 영수증)으로 저장하고 영수증을 보낸다.
+- 하나라도 맞지 않으면 후보함에 「Claude에서 승인함」(· 확인 필요)으로 남아 소유자가 마저 확인한다. 추측해서 채우지 않는다.
+- 같은 후보는 영수증 때문에 두 번 저장되지 않는다. 출처 `codex`도 받는다.
+
 저장 위치 (이 브라우저 전용): 토큰 `palate.lifehub.remote.v1`, 가져온 후보 키 `palate.lifehub.remote-keys.v1.<user-id>`, 전송 결과 `palate.lifehub.remote-outcomes.v1.<user-id>`. 연결 해제 시 토큰을 지우고 서버에 폐기를 요청한다.
 
 연결 주소는 `src/lib/lifehub-config.ts`에 있다(공개 URL이며 비밀 값이 아님). 배포된 PALATE 주소에서만 연결 버튼이 활성화된다.

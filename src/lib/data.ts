@@ -515,7 +515,7 @@ export function validateArchive(input: unknown): Archive {
     for (const receipt of a.lifehub_receipts) {
       if (!object(receipt) ||
           !str(receipt.key, 150) ||
-          !/^(chatgpt|claude|manual):[A-Za-z0-9_.:-]{8,128}$/.test(receipt.key) ||
+          !/^(chatgpt|claude|codex|manual):[A-Za-z0-9_.:-]{8,128}$/.test(receipt.key) ||
           receiptKeys.has(receipt.key) ||
           !["meal", "wish"].includes(String(receipt.entity_type)) ||
           !str(receipt.entity_id, 100) ||
