@@ -12,8 +12,9 @@ import {
 } from "../lib/lifehub-local";
 import {
   beginConnect, browserDeps, completeConnect, connectAvailable, disconnect, isAuthCallback, isConnected,
-  LifeHubError, remoteKeys, remoteOutcomes, syncWithLifeHub, type OutcomeState,
+  LifeHubError, remoteKeys, remoteOutcomes, autoApplyEnabled, setAutoApply, type OutcomeState,
 } from "../lib/lifehub-remote";
+import { runLifeHubSync } from "../lib/lifehub-autosync";
 import { PALATE_APP_URL } from "../lib/lifehub-config";
 
 // React StrictMode runs effects twice in development; the one-time code exchange must not.
@@ -41,6 +42,7 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
   const [syncing, setSyncing] = useState(false);
   const [hubKeys, setHubKeys] = useState<Set<string>>(new Set());
   const [outcomes, setOutcomes] = useState<Record<string, OutcomeState>>({});
+  const [autoApply, setAutoApplyState] = useState(() => autoApplyEnabled(browserDeps()));
   const canConnect = connectAvailable(location);
 
   const reload = (current: Archive = archive) => {
@@ -63,10 +65,11 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
     setSyncing(true);
     try {
       await ensureUserSaved();
-      const s = await syncWithLifeHub(current, browserDeps());
-      reload(current);
-      if (!quiet || s.imported || s.conflicts) {
+      const s = await runLifeHubSync(current, onSave, browserDeps());
+      reload(s.archive);
+      if (!quiet || s.imported || s.conflicts || s.applied) {
         const parts = [s.imported ? `새 후보 ${s.imported}개를 가져왔어요` : "새 후보는 없어요"];
+        if (s.applied) parts.push(`Claude에서 승인한 ${s.applied}개를 저장했어요`);
         if (s.receiptsSent || s.rejectionsSent) parts.push(`승인 ${s.receiptsSent}개·거절 ${s.rejectionsSent}개를 Life Hub에 알렸어요`);
         if (s.waiting) parts.push(`${s.waiting}개는 다음 동기화 때 다시 보낼게요`);
         setNotice(parts.join(" · ") + ".");
@@ -219,6 +222,7 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
         <span className="hub-connection-state"><Link2 size={16}/> Life Hub에 연결됨</span>
         <button type="button" className="primary" disabled={syncing} onClick={() => { void sync(); }}><RefreshCw size={17}/>{syncing ? "동기화 중…" : "지금 동기화"}</button>
         <button type="button" className="p2-quiet-btn" onClick={disconnectHub}><Unlink size={17}/> 연결 해제</button>
+        <label className="hub-auto-apply"><input type="checkbox" checked={autoApply} onChange={e => { setAutoApply(browserDeps(), e.target.checked); setAutoApplyState(e.target.checked); if (e.target.checked) void sync(archive, true); }}/> Claude에서 승인된 항목 자동 반영</label>
       </> : <>
         <span className="hub-connection-state">Life Hub에 연결되어 있지 않아요</span>
         <button type="button" className="primary" disabled={!canConnect} onClick={() => { void connect(); }}><Link2 size={17}/> Life Hub 연결</button>
@@ -247,7 +251,7 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
           <span className="hub-type">{entry.candidate.candidate_type === "meal" ? "식사 후보" : "위시리스트 후보"} · {hubKeys.has(entry.key) ? entry.candidate.source + " · Life Hub" : entry.candidate.source === "manual" ? "수동 테스트" : entry.candidate.source + " (수동 입력·미인증)"}</span>
           <strong>{entry.candidate.candidate_type === "meal" ? entry.candidate.payload.menu_name : entry.candidate.payload.name}</strong>
           <span>{entry.candidate.candidate_type === "meal" ? (entry.candidate.payload.place_name || "장소 미지정") : (entry.candidate.payload.wish_kind === "visit_place" ? "가보고 싶은 식당" : "먹고 싶은 메뉴")}</span>
-          <small>{entry.status === "pending" ? "검토 대기" : entry.status === "confirmed" ? "승인됨" : "거절됨"}
+          <small>{entry.status === "pending" ? (entry.hub_status === "approved" ? (entry.needs_app_review ? "Claude에서 승인함 · 확인 필요" : "Claude에서 승인함") : "검토 대기") : entry.status === "confirmed" ? "승인됨" : "거절됨"}
             {hubKeys.has(entry.key) && entry.status !== "pending" && (outcomes[entry.key] === "conflict" ? " · Life Hub와 상태 다름" : outcomes[entry.key] ? " · Life Hub 반영됨" : " · Life Hub 전송 대기")}</small>
         </button>)}
       </div>
@@ -271,6 +275,7 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
                   <label>주소·동네<input aria-label="후보 관심 주소" value={wish.address} onChange={e => setWish(v=>({...v,address:e.target.value}))}/></label>
                   <label className="hub-full">참고 URL (HTTPS)<input aria-label="후보 관심 URL" value={wish.url} onChange={e => setWish(v=>({...v,url:e.target.value}))}/></label>
                 </div>}
+                {active.hub_status === "approved" && <p className="hub-notice">Claude 카드에서 승인한 후보예요. {active.needs_app_review ? "PALATE에서 한 번 더 확인해 달라고 했어요." : "빠진 값을 채우거나 자동 반영이 꺼져 있어 여기서 확인해요."}</p>}
                 <p className="p2-muted hub-warning">이 내용을 실제 기록으로 저장합니다. 같은 음식 이름이라도 가게·지점을 확인하세요. 후보 검토만으로는 자동 저장되지 않습니다.</p>
                 <div className="p2-actions">
                   <button className="primary" type="button" disabled={processing} onClick={() => { void approve(); }}><Check size={17}/>{processing ? "기록 저장 중…" : "확인하고 실제 기록으로 저장"}</button>

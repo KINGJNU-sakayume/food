@@ -5,7 +5,7 @@
  */
 import type { Archive } from "../types/model.js";
 import { candidateKey, type CandidateEnvelope } from "./lifehub-contract.js";
-import { enqueueCandidate, rejectCandidate } from "./lifehub-inbox.js";
+import { enqueueCandidate, rejectCandidate, upsertRemoteCandidate, type RemoteState } from "./lifehub-inbox.js";
 import { validateCandidate } from "./lifehub-contract.js";
 
 const PREFIX = "palate.lifehub.local-inbox.v1.";
@@ -38,11 +38,17 @@ export function readLocalInbox(archive: Archive, storage: Pick<Storage, "getItem
     if (typeof item.key !== "string" || item.key !== candidateKey(candidate) || keys.has(item.key) ||
         !["pending","confirmed","rejected"].includes(item.status) ||
         typeof item.received_at !== "string" || Number.isNaN(Date.parse(item.received_at)) ||
-        (item.reviewed_at !== undefined && (typeof item.reviewed_at !== "string" || Number.isNaN(Date.parse(item.reviewed_at)))))
+        (item.reviewed_at !== undefined && (typeof item.reviewed_at !== "string" || Number.isNaN(Date.parse(item.reviewed_at)))) ||
+        (item.hub_revision !== undefined && (!Number.isSafeInteger(item.hub_revision) || item.hub_revision < 0)) ||
+        (item.hub_status !== undefined && !["pending", "approved"].includes(item.hub_status)) ||
+        (item.needs_app_review !== undefined && typeof item.needs_app_review !== "boolean"))
       throw new Error("후보함에 손상된 기록이 있습니다. 자동 초기화하지 않습니다.");
     keys.add(item.key);
     return { key:item.key, candidate, status:item.status, received_at:item.received_at,
-      reviewed_at:item.reviewed_at, confirmed_entity_id:item.confirmed_entity_id };
+      reviewed_at:item.reviewed_at, confirmed_entity_id:item.confirmed_entity_id,
+      ...(item.hub_revision !== undefined ? { hub_revision:item.hub_revision } : {}),
+      ...(item.hub_status !== undefined ? { hub_status:item.hub_status } : {}),
+      ...(item.needs_app_review !== undefined ? { needs_app_review:item.needs_app_review } : {}) };
   });
   return reconcileInbox(archive, entries);
 }
@@ -56,6 +62,13 @@ export function addLocalCandidate(archive: Archive, input: unknown, storage: Pic
   const before = readLocalInbox(archive, storage);
   const outcome = enqueueCandidate(before, input, new Date().toISOString());
   if (outcome.result === "inserted") write(archive, outcome.entries, storage);
+  return { ...outcome, entries: reconcileInbox(archive, outcome.entries) };
+}
+/** A candidate from Life Hub: inserts it, or follows a newer hub revision/status of a pending copy. */
+export function upsertRemoteLocalCandidate(archive: Archive, input: unknown, remote: RemoteState, storage: Pick<Storage, "getItem" | "setItem"> = localStorage) {
+  const before = readLocalInbox(archive, storage);
+  const outcome = upsertRemoteCandidate(before, input, remote, new Date().toISOString());
+  if (outcome.entries !== before) write(archive, outcome.entries, storage);
   return { ...outcome, entries: reconcileInbox(archive, outcome.entries) };
 }
 export function rejectLocalCandidate(archive: Archive, key: string, storage: Pick<Storage, "getItem" | "setItem"> = localStorage) {

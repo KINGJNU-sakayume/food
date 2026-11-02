@@ -5,8 +5,10 @@ import { approveCandidate } from "../src/lib/lifehub-approval.js";
 import { addLocalCandidate, readLocalInbox, rejectLocalCandidate } from "../src/lib/lifehub-local.js";
 import {
   beginConnect, completeConnect, connectAvailable, disconnect, isAuthCallback, isConnected,
-  LifeHubError, remoteOutcomes, syncWithLifeHub, type RemoteDeps,
+  LifeHubError, remoteOutcomes, syncWithLifeHub, autoApplyEnabled, setAutoApply, type RemoteDeps,
 } from "../src/lib/lifehub-remote.js";
+import { runLifeHubSync } from "../src/lib/lifehub-autosync.js";
+import type { Archive } from "../src/types/model.js";
 import { LIFEHUB_CLIENT_ID, LIFEHUB_ORIGIN, LIFEHUB_RESOURCE, PALATE_APP_URL } from "../src/lib/lifehub-config.js";
 
 class MemoryStorage {
@@ -24,7 +26,8 @@ const synthetic = (key: string, type: "meal" | "wish" = "meal") => ({
 /** In-memory Life Hub: token endpoint + PALATE API, with switches to simulate failures. */
 function fakeHub() {
   const hub = {
-    candidates: new Map<string, { status: string; candidate: ReturnType<typeof synthetic>; entity?: string }>(),
+    candidates: new Map<string, { status: string; candidate: ReturnType<typeof synthetic>; entity?: string;
+      revision?: number; final?: Record<string, unknown>; needs_app_review?: boolean }>(),
     issued: 0, refreshes: 0, calls: [] as string[],
     offline: false, failNext: 0, revokeAll: false, expiresIn: 3600, lastTokenForm: null as URLSearchParams | null,
     access: new Set<string>(), refresh: new Set<string>(),
@@ -57,8 +60,10 @@ function fakeHub() {
     if (!auth || !hub.access.has(auth)) return json(401, { error: "invalid_token" });
     if (hub.failNext > 0) { hub.failNext--; return json(503, { error: "unavailable" }); }
     if (url.pathname === "/palate/v1/candidates") {
-      const list = [...hub.candidates.entries()].filter(([, v]) => v.status === "pending")
-        .map(([key, v]) => ({ key, status: v.status, candidate: v.candidate }));
+      const wanted = url.searchParams.get("status") === "open" ? ["pending", "approved"] : ["pending"];
+      const list = [...hub.candidates.entries()].filter(([, v]) => wanted.includes(v.status))
+        .map(([key, v]) => ({ key, status: v.status, candidate: v.candidate, revision: v.revision ?? 0,
+          final_candidate: v.final ?? null, needs_app_review: v.needs_app_review ?? false }));
       return json(200, { candidates: list });
     }
     const body = JSON.parse(String(init?.body)) as { key: string; entity_type?: string; entity_id?: string };
@@ -233,4 +238,109 @@ test("connecting is only offered on the deployed PALATE address", () => {
   assert.equal(connectAvailable({ origin: app.origin, pathname: app.pathname }), true);
   assert.equal(connectAvailable({ origin: app.origin, pathname: app.pathname + "index.html" }), true);
   assert.equal(connectAvailable({ origin: "http://localhost:5173", pathname: "/" }), false);
+});
+
+/** A tiny Archive commit like App.commit: applies fn to the latest archive. */
+function store(start: Archive) {
+  const box = { archive: start, saves: 0 };
+  const save = async (fn: (a: Archive) => Archive) => { box.archive = fn(box.archive); box.saves++; return true; };
+  return { box, save };
+}
+const complete = (key: string, menu = "가상 비빔밥") => ({
+  ...synthetic(key), payload: { menu_name: menu, eaten_at: "2026-11-02", verdict: "LIKE", reorder_intent: "YES", note: "카드에서 고침" },
+});
+
+test("sync asks for open candidates and saves card-approved items once, using the owner's edit", async () => {
+  const { hub, fetchImpl } = fakeHub();
+  hub.candidates.set("claude:mcp-meal-0101", { status: "approved", candidate: synthetic("mcp-meal-0101"), revision: 1, final: complete("mcp-meal-0101") });
+  hub.candidates.set("claude:mcp-wish-0101", { status: "approved", candidate: synthetic("mcp-wish-0101", "wish") });
+  hub.candidates.set("claude:mcp-meal-0102", { status: "pending", candidate: synthetic("mcp-meal-0102") });
+  const deps = await connected(fetchImpl);
+  const { box, save } = store(emptyArchive());
+  const first = await runLifeHubSync(box.archive, save, deps);
+  assert.ok(hub.calls.some((c) => c === "GET /palate/v1/candidates"));
+  assert.equal(first.applied, 2);
+  assert.equal(box.archive.records.length, 1);
+  assert.equal(box.archive.menus.find((m) => m.id === box.archive.records[0].menu_id)!.name, "가상 비빔밥");
+  assert.equal(box.archive.records[0].short_note, "카드에서 고침");
+  assert.equal(box.archive.records[0].verdict, "LIKE");
+  assert.equal(box.archive.wishes.length, 1);
+  assert.equal(hub.candidates.get("claude:mcp-meal-0101")!.status, "confirmed");
+  assert.equal(hub.candidates.get("claude:mcp-wish-0101")!.status, "confirmed");
+  assert.equal(first.receiptsSent, 2);
+  // The pending one is only in the inbox.
+  const inbox = readLocalInbox(box.archive, deps.storage);
+  assert.equal(inbox.find((e) => e.key === "claude:mcp-meal-0102")!.status, "pending");
+  assert.equal(inbox.find((e) => e.key === "claude:mcp-meal-0101")!.status, "confirmed");
+
+  // Life Hub still says approved (e.g. the receipt was lost): no second meal.
+  hub.candidates.get("claude:mcp-meal-0101")!.status = "approved";
+  const again = await runLifeHubSync(box.archive, save, deps);
+  assert.equal(again.applied, 0);
+  assert.equal(box.archive.records.length, 1);
+  // Even a direct second approval returns the first record.
+  const twice = approveCandidate(box.archive, complete("mcp-meal-0101"), { candidate_type: "meal", menu_name: "가상 비빔밥", place_name: "",
+    address: "", eaten_at: "2026-11-02", verdict: "LIKE", reorder_intent: "YES", note: "" });
+  assert.equal(twice.duplicate, true);
+});
+
+test("card-approved items wait in the inbox when a last check is asked, a field is missing, or auto-apply is off", async () => {
+  const { hub, fetchImpl } = fakeHub();
+  hub.candidates.set("claude:mcp-meal-0201", { status: "approved", candidate: complete("mcp-meal-0201"), needs_app_review: true });
+  hub.candidates.set("claude:mcp-meal-0202", { status: "approved", candidate: synthetic("mcp-meal-0202") }); // no verdict/reorder
+  const deps = await connected(fetchImpl);
+  const { box, save } = store(emptyArchive());
+  const s1 = await runLifeHubSync(box.archive, save, deps);
+  assert.equal(s1.applied, 0);
+  assert.equal(s1.approvedWaiting, 2);
+  assert.equal(box.saves, 0);
+  const waiting = readLocalInbox(box.archive, deps.storage);
+  assert.deepEqual(waiting.map((e) => [e.status, e.hub_status, e.needs_app_review]), [["pending", "approved", true], ["pending", "approved", false]]);
+
+  assert.equal(autoApplyEnabled(deps), true);
+  setAutoApply(deps, false);
+  assert.equal(autoApplyEnabled(deps), false);
+  hub.candidates.set("claude:mcp-meal-0203", { status: "approved", candidate: complete("mcp-meal-0203") });
+  const s2 = await runLifeHubSync(box.archive, save, deps);
+  assert.equal(s2.applied, 0);
+  assert.equal(box.archive.records.length, 0);
+  setAutoApply(deps, true);
+  const s3 = await runLifeHubSync(box.archive, save, deps);
+  assert.equal(s3.applied, 1);
+  assert.equal(box.archive.records.length, 1);
+});
+
+test("a pending copy follows a newer hub revision; the same revision with other content is a conflict", async () => {
+  const { hub, fetchImpl } = fakeHub();
+  hub.candidates.set("claude:mcp-meal-0301", { status: "pending", candidate: synthetic("mcp-meal-0301") });
+  const deps = await connected(fetchImpl);
+  const archive = emptyArchive();
+  await syncWithLifeHub(archive, deps);
+  const edited = complete("mcp-meal-0301", "가상 수정 메뉴");
+  Object.assign(hub.candidates.get("claude:mcp-meal-0301")!, { revision: 1, final: edited });
+  await syncWithLifeHub(archive, deps);
+  let entry = readLocalInbox(archive, deps.storage)[0];
+  assert.equal(entry.candidate.candidate_type === "meal" && entry.candidate.payload.menu_name, "가상 수정 메뉴");
+  assert.equal(entry.hub_revision, 1);
+  // Same revision, different content: kept as is and counted as a conflict.
+  hub.candidates.get("claude:mcp-meal-0301")!.final = complete("mcp-meal-0301", "다른 내용");
+  const s = await syncWithLifeHub(archive, deps);
+  assert.equal(s.conflicts, 1);
+  entry = readLocalInbox(archive, deps.storage)[0];
+  assert.equal(entry.candidate.candidate_type === "meal" && entry.candidate.payload.menu_name, "가상 수정 메뉴");
+  // An older revision never rolls it back.
+  Object.assign(hub.candidates.get("claude:mcp-meal-0301")!, { revision: 0, final: undefined });
+  await syncWithLifeHub(archive, deps);
+  entry = readLocalInbox(archive, deps.storage)[0];
+  assert.equal(entry.candidate.candidate_type === "meal" && entry.candidate.payload.menu_name, "가상 수정 메뉴");
+});
+
+test("codex proposals are accepted and receipted like claude ones", async () => {
+  const { hub, fetchImpl } = fakeHub();
+  hub.candidates.set("codex:mcp-meal-0401", { status: "approved", candidate: { ...complete("mcp-meal-0401"), source: "codex" } as ReturnType<typeof synthetic> });
+  const deps = await connected(fetchImpl);
+  const { box, save } = store(emptyArchive());
+  const s = await runLifeHubSync(box.archive, save, deps);
+  assert.equal(s.applied, 1);
+  assert.equal(hub.candidates.get("codex:mcp-meal-0401")!.status, "confirmed");
 });

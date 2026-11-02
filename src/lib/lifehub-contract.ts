@@ -9,7 +9,7 @@
 import type { Reorder, Verdict } from "../types/model.js";
 
 export const LIFEHUB_CONTRACT_VERSION = 1;
-export type CandidateSource = "chatgpt" | "claude" | "manual";
+export type CandidateSource = "chatgpt" | "claude" | "codex" | "manual";
 
 interface CandidateBase {
   schema_version: 1;
@@ -50,6 +50,12 @@ export interface CandidateEnvelope {
   reviewed_at?: string;
   /** The actual PALATE entity ID, created ONLY after an explicit confirmed save. */
   confirmed_entity_id?: string;
+  /** Life Hub card review: the hub revision this copy reflects (owner edits in a Claude card raise it). */
+  hub_revision?: number;
+  /** "approved" = the owner approved it in a Claude card; PALATE still has to save it. */
+  hub_status?: "pending" | "approved";
+  /** Life Hub asks for a last check in PALATE before saving. */
+  needs_app_review?: boolean;
 }
 const obj = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
@@ -83,7 +89,7 @@ export function validateCandidate(input: unknown): LifeHubCandidate {
   if (!obj(input) ||
       !allowed(input, ["schema_version", "source", "source_ref", "idempotency_key", "created_at", "candidate_type", "payload"]) ||
       input.schema_version !== 1 ||
-      !["chatgpt", "claude", "manual"].includes(String(input.source)) ||
+      !["chatgpt", "claude", "codex", "manual"].includes(String(input.source)) ||
       !required(input.source_ref, 200) ||
       !/^[A-Za-z0-9_.:-]{1,200}$/.test(String(input.source_ref)) ||
       !required(input.idempotency_key, 128) ||

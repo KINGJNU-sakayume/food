@@ -30,7 +30,8 @@ import { Modal, dateLabel, Empty } from "./components/Common";
 import QuickAdd from "./components/QuickAdd";
 import Settings from "./components/Settings";
 import LifeHubInboxPage from "./pages/LifeHubInboxPage";
-import { isAuthCallback } from "./lib/lifehub-remote";
+import { browserDeps, isAuthCallback, isConnected } from "./lib/lifehub-remote";
+import { runLifeHubSync } from "./lib/lifehub-autosync";
 import ChoosePage, { ReceiveShare } from "./pages/ChoosePage";
 import {
   Collection,
@@ -248,6 +249,18 @@ export default function App() {
       return false;
     }
   }
+  // Life Hub: when the app opens, save what the owner already approved in a Claude card (auto-apply,
+  // on by default) and send the receipts. The inbox page shares the same round trip.
+  const autoSynced = useRef(false);
+  useEffect(() => {
+    if (!storageReady || recovery || autoSynced.current) return;
+    autoSynced.current = true;
+    if (isAuthCallback(location.search) || !isConnected(browserDeps())) return;
+    if (!primaryEnabled() && !localStorage.getItem(STORAGE_KEY)) return;
+    void runLifeHubSync(archiveRef.current, (fn) => commit(fn, false), browserDeps())
+      .then((s) => { if (s.applied) notify(`Claude에서 승인한 기록 ${s.applied}개를 PALATE에 저장했어요.`); })
+      .catch(() => undefined);
+  }, [storageReady, recovery]);
   const routeUrl = new URL(
     route.replace(/^#/, "") || "/collection",
     "https://palate.local",

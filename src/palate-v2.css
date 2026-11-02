@@ -209,3 +209,4 @@
  .hub-connection { padding: 12px; }
  .hub-connection button { flex: 1 1 auto; justify-content: center; }
 }
+.hub-auto-apply { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #394438; flex-basis: 100%; }
