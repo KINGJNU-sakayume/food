@@ -1,4 +1,19 @@
-# PALATE P3 로컬 후보함 — 서버 연동 전 검증
+# PALATE 후보함 — Life Hub 연결 (P2b)
+
+## Life Hub 연결 (P2b)
+
+PALATE는 Life Hub의 OAuth 공개 클라이언트로 연결된다. 클라이언트 비밀은 없고, `public/lifehub-client.json`(Client ID Metadata Document)으로 자신을 식별한다.
+
+1. 후보함의 **Life Hub 연결** → Life Hub 소유자 비밀번호 화면 → PALATE로 돌아옴 (PKCE S256, `state`·`iss` 검증)
+2. PALATE가 받는 토큰은 `food:inbox` 권한, `/palate` 리소스 전용이다. Claude 커넥터 토큰과 서로 쓸 수 없다.
+3. 후보함을 열면 Life Hub의 대기 후보를 가져와 기존 계약 검증(`validateCandidate`)을 통과한 것만 로컬 후보함에 넣는다. **Archive.records는 바뀌지 않는다.**
+4. 승인하면 기존처럼 기록과 `lifehub_receipts` 영수증이 한 번에 저장된 뒤, 영수증을 Life Hub로 보낸다(`POST /palate/v1/receipts`). 거절은 `POST /palate/v1/rejections`.
+5. 전송 실패 시 아웃박스로 남아 다음 동기화 때 다시 보낸다. Life Hub와 상태가 다르면(409) 재시도를 멈추고 표시만 하며, **PALATE의 기록은 그대로 유지**한다.
+6. Life Hub에서 가져온 후보만 결과를 보낸다. 직접 붙여 넣은 JSON 후보는 서버로 보내지 않는다.
+
+저장 위치 (이 브라우저 전용): 토큰 `palate.lifehub.remote.v1`, 가져온 후보 키 `palate.lifehub.remote-keys.v1.<user-id>`, 전송 결과 `palate.lifehub.remote-outcomes.v1.<user-id>`. 연결 해제 시 토큰을 지우고 서버에 폐기를 요청한다.
+
+연결 주소는 `src/lib/lifehub-config.ts`에 있다(공개 URL이며 비밀 값이 아님). 배포된 PALATE 주소에서만 연결 버튼이 활성화된다.
 
 ## 현재 기능
 
@@ -21,14 +36,10 @@ Life Hub는 아직 존재하지 않습니다. PALATE의 `#/inbox` 화면은 **�
 - `Archive.lifehub_receipts`가 없는 이전 백업도 읽을 수 있다.
 - **단서:** 후보함 자체는 현재 로컬 기기 전용이므로 JSON 백업에는 후보함의 미승인 항목이 포함되지 않는다. 여러 기기 후보 동기화는 P3 백엔드가 구현된 뒤 가능하다.
 
-## 실제 Life Hub 연결을 위해 다음에 해야 할 일
+## 남은 일
 
-1. 각 개인 웹사이트와 분리된 범용 Life Hub 최소 코어 설계/배포
-2. 본인 인증, 사용자 단위 데이터 분리, 발신 앱별 권한(scope)
-3. `POST /v1/inbox/candidates`의 중복 방지와 인증된 서버 저장
-4. PALATE 클라이언트의 인증된 `GET` 동기화 및 후보 조회 커서; 변경 버전·삭제 처리
-5. 승인 완료 시 서버 ACK 및 재시도 가능한 outbox; 후보 등록과 승인에 대해 정확히 한 번 반영 테스트
-6. ChatGPT/Claude에서 실제로 연결 가능한 인증된 액션 또는 커넥터 구축, 데이터 권한 확인
-7. 동일한 범용 Life Hub 계약을 독서·업적·추억 프로젝트로 확장
+- 여러 기기에서 로컬 후보함 상태(미승인 후보) 동기화. 현재는 각 기기가 Life Hub에서 대기 후보를 따로 가져온다.
+- 같은 후보를 두 기기에서 각각 승인할 때의 충돌 화면 (지금은 두 번째 영수증이 409로 표시만 됨).
+- 독서·업적·추억 등 다른 사이트로 같은 연결 방식 확장.
 
-서버가 없는데도 서버가 있는 것처럼 네트워크 요청이나 비밀 API 키를 브라우저에 추가하는 일은 하지 않는다. 주 저장소와 모바일 기기의 사전 백업 정책도 계속 유지한다.
+비밀 API 키를 브라우저에 넣지 않는다. 토큰은 소유자가 로그인해 받은 단기 액세스 토큰과 회전되는 리프레시 토큰뿐이다.

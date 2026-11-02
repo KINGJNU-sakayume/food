@@ -30,6 +30,7 @@ import { Modal, dateLabel, Empty } from "./components/Common";
 import QuickAdd from "./components/QuickAdd";
 import Settings from "./components/Settings";
 import LifeHubInboxPage from "./pages/LifeHubInboxPage";
+import { isAuthCallback } from "./lib/lifehub-remote";
 import ChoosePage, { ReceiveShare } from "./pages/ChoosePage";
 import {
   Collection,
@@ -66,7 +67,8 @@ export default function App() {
     [storageReady, setStorageReady] = useState(!primaryEnabled()),
     [recovery, setRecovery] = useState(boot.error),
     [corruptRaw, setCorruptRaw] = useState(boot.raw),
-    [route, setRoute] = useState(location.hash || "#/collection"),
+    // Returning from Life Hub sign-in lands on the app root with ?code&state: open the inbox to finish.
+    [route, setRoute] = useState(isAuthCallback(location.search) ? "#/inbox" : location.hash || "#/collection"),
     [quick, setQuick] = useState<{
       record?: EatingRecord;
       menuId?: string;

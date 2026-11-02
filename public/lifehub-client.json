@@ -1,0 +1,10 @@
+{
+  "client_id": "https://kingjnu-sakayume.github.io/food/lifehub-client.json",
+  "client_name": "PALATE",
+  "client_uri": "https://kingjnu-sakayume.github.io/food/",
+  "redirect_uris": ["https://kingjnu-sakayume.github.io/food/"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none",
+  "application_type": "web"
+}
