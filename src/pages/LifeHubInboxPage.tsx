@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, FileJson, Inbox, Plus, ShieldAlert, X } from "lucide-react";
+import { ArrowLeft, Check, FileJson, Inbox, Link2, Plus, RefreshCw, ShieldAlert, Unlink, X } from "lucide-react";
 import type { Archive, RecordDraft } from "../types/model";
 import type { CandidateEnvelope } from "../lib/lifehub-contract";
 import { candidateKey, validateCandidate } from "../lib/lifehub-contract";
@@ -10,6 +10,14 @@ import {
   addLocalCandidate, completeLocalCandidate, exampleCandidates, readLocalInbox,
   rejectLocalCandidate, inboxStorageKey,
 } from "../lib/lifehub-local";
+import {
+  beginConnect, browserDeps, completeConnect, connectAvailable, disconnect, isAuthCallback, isConnected,
+  LifeHubError, remoteKeys, remoteOutcomes, syncWithLifeHub, type OutcomeState,
+} from "../lib/lifehub-remote";
+import { PALATE_APP_URL } from "../lib/lifehub-config";
+
+// React StrictMode runs effects twice in development; the one-time code exchange must not.
+let callbackOnce: Promise<void> | null = null;
 
 type Save = (fn: (archive: Archive) => Archive) => Promise<boolean>;
 type MealFields = {
@@ -29,11 +37,71 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
   const [processing, setProcessing] = useState(false);
   const [meal, setMeal] = useState<MealFields>(blank);
   const [wish, setWish] = useState({ name:"", address:"", url:"" });
+  const [connected, setConnected] = useState(() => isConnected(browserDeps()));
+  const [syncing, setSyncing] = useState(false);
+  const [hubKeys, setHubKeys] = useState<Set<string>>(new Set());
+  const [outcomes, setOutcomes] = useState<Record<string, OutcomeState>>({});
+  const canConnect = connectAvailable(location);
 
-  const reload = () => {
-    try { setEntries(readLocalInbox(archive)); setError(""); }
+  const reload = (current: Archive = archive) => {
+    try {
+      setEntries(readLocalInbox(current)); setError("");
+      const deps = browserDeps();
+      setHubKeys(remoteKeys(current, deps)); setOutcomes(remoteOutcomes(current, deps));
+    }
     catch (e) { setError("후보함을 읽을 수 없습니다: " + (e as Error).message); }
   };
+  // The inbox is stored per archive user: persist a brand-new archive's user ID before writing it.
+  async function ensureUserSaved() {
+    if (!primaryEnabled() && !localStorage.getItem(STORAGE_KEY)) {
+      if (!await onSave(a => a))
+        throw new Error("후보함의 사용자 ID를 안전하게 저장하지 못했습니다.");
+    }
+  }
+  async function sync(current: Archive = archive, quiet = false) {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await ensureUserSaved();
+      const s = await syncWithLifeHub(current, browserDeps());
+      reload(current);
+      if (!quiet || s.imported || s.conflicts) {
+        const parts = [s.imported ? `새 후보 ${s.imported}개를 가져왔어요` : "새 후보는 없어요"];
+        if (s.receiptsSent || s.rejectionsSent) parts.push(`승인 ${s.receiptsSent}개·거절 ${s.rejectionsSent}개를 Life Hub에 알렸어요`);
+        if (s.waiting) parts.push(`${s.waiting}개는 다음 동기화 때 다시 보낼게요`);
+        setNotice(parts.join(" · ") + ".");
+      }
+      if (s.conflicts) setError(`${s.conflicts}개 후보는 Life Hub와 상태가 달라요. PALATE에 저장된 기록은 그대로 유지돼요.`);
+    } catch (e) {
+      if (e instanceof LifeHubError && e.kind === "not_connected") setConnected(false);
+      setError((e as Error).message);
+    } finally { setSyncing(false); }
+  }
+  async function connect() {
+    try { location.assign(await beginConnect(browserDeps())); }
+    catch (e) { setError((e as Error).message); }
+  }
+  function disconnectHub() {
+    if (!confirm("이 기기에서 Life Hub 연결을 해제할까요? 이미 가져온 후보와 기록은 그대로 남아요.")) return;
+    disconnect(browserDeps());
+    setConnected(false);
+    setNotice("Life Hub 연결을 해제했어요.");
+  }
+  useEffect(() => {
+    void (async () => {
+      if (isAuthCallback(location.search)) {
+        callbackOnce ??= completeConnect(location.search, browserDeps());
+        try {
+          await callbackOnce;
+          setConnected(true);
+          setNotice("Life Hub에 연결했어요.");
+        } catch (e) { setError((e as Error).message); }
+        history.replaceState(null, "", PALATE_APP_URL + "#/inbox");
+      }
+      if (isConnected(browserDeps())) await sync(archive, true);
+    })();
+    // Run once on open; later syncs are explicit or follow an approval/rejection.
+  }, []);
   useEffect(() => {
     reload();
     const refresh = (event: StorageEvent) => {
@@ -64,10 +132,7 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
     items.forEach(validateCandidate);
     // Persist the generated user ID before writing a user-scoped inbox.
     // Otherwise a new emptyArchive() on reload makes its entries invisible.
-    if (!primaryEnabled() && !localStorage.getItem(STORAGE_KEY)) {
-      if (!await onSave(a => a))
-        throw new Error("후보함의 사용자 ID를 안전하게 저장하지 못했습니다.");
-    }
+    await ensureUserSaved();
     let inserted = 0;
     for (const item of items) {
       const result = addLocalCandidate(archive, item);
@@ -95,6 +160,7 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
     try {
       rejectLocalCandidate(archive, entry.key);
       reload(); setSelected(""); setNotice("기록 후보를 거절했습니다. 실제 식사 기록은 변경되지 않았습니다.");
+      if (connected && hubKeys.has(entry.key)) void sync(archive, true);
     } catch (e) { setError((e as Error).message); }
   };
   async function approve() {
@@ -129,8 +195,10 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
       try {
         if (!savedArchive || !targetId) throw new Error("승인된 기록의 ID를 확인하지 못했습니다.");
         completeLocalCandidate(savedArchive, active.key, targetId);
-        setEntries(readLocalInbox(savedArchive));
+        reload(savedArchive);
         setNotice("실제 아카이브에 승인된 기록을 저장했습니다.");
+        // The receipt is already in the Archive; telling Life Hub can safely happen later too.
+        if (connected && hubKeys.has(active.key)) void sync(savedArchive, true);
       } catch (e) {
         // A receipt is atomically persisted inside Archive. The next reload
         // reconciles it even if localStorage inbox write failed.
@@ -143,9 +211,20 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
   }
   return <div className="p2-page hub-inbox">
     <a href="#/choose" className="p2-back"><ArrowLeft size={18}/> 고르기로 돌아가기</a>
-    <div className="p2-eyebrow">LIFE HUB / LOCAL PREVIEW</div>
+    <div className="p2-eyebrow">LIFE HUB</div>
     <h1>기록 후보함</h1>
-    <p className="p2-muted">Life Hub 서버가 연결되기 전의 로컬 테스트 화면입니다. 샘플과 직접 붙여넣은 JSON만 처리하며, ChatGPT·Claude에 연결된 상태는 아닙니다.</p>
+    <p className="p2-muted">Claude 등에서 Life Hub로 제안된 음식 후보를 확인하고, 직접 승인한 것만 실제 기록으로 저장합니다. 승인·거절 결과는 Life Hub에도 알려 줍니다.</p>
+    <section className="hub-connection" aria-label="Life Hub 연결">
+      {connected ? <>
+        <span className="hub-connection-state"><Link2 size={16}/> Life Hub에 연결됨</span>
+        <button type="button" className="primary" disabled={syncing} onClick={() => { void sync(); }}><RefreshCw size={17}/>{syncing ? "동기화 중…" : "지금 동기화"}</button>
+        <button type="button" className="p2-quiet-btn" onClick={disconnectHub}><Unlink size={17}/> 연결 해제</button>
+      </> : <>
+        <span className="hub-connection-state">Life Hub에 연결되어 있지 않아요</span>
+        <button type="button" className="primary" disabled={!canConnect} onClick={() => { void connect(); }}><Link2 size={17}/> Life Hub 연결</button>
+        {!canConnect && <small>배포된 PALATE 주소에서만 연결할 수 있어요.</small>}
+      </>}
+    </section>
     <div className="hub-inbox-tools">
       <button type="button" className="primary" onClick={() => { void examples(); }}><Plus size={17}/> 테스트 후보 2개 불러오기</button>
       <button type="button" className="p2-quiet-btn" onClick={() => setShowImport(x => !x)}><FileJson size={17}/> 후보 JSON 직접 입력</button>
@@ -161,14 +240,15 @@ export default function LifeHubInboxPage({ archive, onSave }: { archive: Archive
       <button type="button" className={filter === "pending" ? "active" : ""} onClick={() => setFilter("pending")}>대기 중</button>
       <button type="button" className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>전체 기록</button>
     </div>
-    {!shown.length && <p className="hub-empty"><Inbox size={26}/> 검토할 후보가 없습니다. 샘플을 불러와 승인 과정을 시험해 보세요.</p>}
+    {!shown.length && <p className="hub-empty"><Inbox size={26}/> {connected ? "검토할 후보가 없습니다. Claude에서 먹은 음식을 말하면 여기로 들어와요." : "검토할 후보가 없습니다. Life Hub를 연결하거나 샘플로 승인 과정을 시험해 보세요."}</p>}
     <div className="hub-candidate-grid">
       <div className="hub-candidate-list">
         {shown.map(entry => <button type="button" key={entry.key} className={selected === entry.key ? "hub-candidate-item active" : "hub-candidate-item"} onClick={() => setSelected(entry.key)}>
-          <span className="hub-type">{entry.candidate.candidate_type === "meal" ? "식사 후보" : "위시리스트 후보"} · {entry.candidate.source === "manual" ? "수동 테스트" : entry.candidate.source + " (수동 입력·미인증)"}</span>
+          <span className="hub-type">{entry.candidate.candidate_type === "meal" ? "식사 후보" : "위시리스트 후보"} · {hubKeys.has(entry.key) ? entry.candidate.source + " · Life Hub" : entry.candidate.source === "manual" ? "수동 테스트" : entry.candidate.source + " (수동 입력·미인증)"}</span>
           <strong>{entry.candidate.candidate_type === "meal" ? entry.candidate.payload.menu_name : entry.candidate.payload.name}</strong>
           <span>{entry.candidate.candidate_type === "meal" ? (entry.candidate.payload.place_name || "장소 미지정") : (entry.candidate.payload.wish_kind === "visit_place" ? "가보고 싶은 식당" : "먹고 싶은 메뉴")}</span>
-          <small>{entry.status === "pending" ? "검토 대기" : entry.status === "confirmed" ? "승인됨" : "거절됨"}</small>
+          <small>{entry.status === "pending" ? "검토 대기" : entry.status === "confirmed" ? "승인됨" : "거절됨"}
+            {hubKeys.has(entry.key) && entry.status !== "pending" && (outcomes[entry.key] === "conflict" ? " · Life Hub와 상태 다름" : outcomes[entry.key] ? " · Life Hub 반영됨" : " · Life Hub 전송 대기")}</small>
         </button>)}
       </div>
       <div className="hub-review">
