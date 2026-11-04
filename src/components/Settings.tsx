@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download, Upload, ArrowUpRight } from "lucide-react";
 import type { Archive } from "../types/model";
 import { emptyArchive, today, validateArchive } from "../lib/data";
@@ -7,7 +7,67 @@ import { Modal } from "./Common";
 import { ShortcutGuide } from "./DiscoveryCommon";
 import { httpsUrl } from "../lib/urls";
 import { defaultEndpoint } from "../lib/restaurants";
+import { connectedLabel, type HubState } from "../lib/lifehub-status";
 import { stageLegacyArchive, verifyStagedArchive, type StagingReport } from "../lib/storage-staging";
+export interface LifeHubSettings {
+  state: HubState;
+  syncing: boolean;
+  retry: boolean;
+  error: string;
+  canConnect: boolean;
+  autoApply: boolean;
+  onConnect: () => void;
+  onSync: () => void;
+  onDisconnect: () => void;
+  onAutoApplyChange: (on: boolean) => void;
+}
+/** The common 「Life Hub」 section (PALATE only receives proposals: no 고급 area). */
+function LifeHubSection({ hub, focus }: { hub: LifeHubSettings; focus: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (focus) ref.current?.scrollIntoView({ block: "start" }); }, [focus]);
+  const deployedOnly = !hub.canConnect && <p className="micro">배포된 주소에서만 연결할 수 있어요.</p>;
+  return (
+    <div className="settings-section hub-settings" id="settings-lifehub" ref={ref} aria-labelledby="settings-lifehub-title">
+      <h3 id="settings-lifehub-title">Life Hub</h3>
+      {hub.state === "A" ? (
+        <>
+          <p className="muted">Claude가 제안한 기록을 받습니다.</p>
+          <button className="primary" disabled={!hub.canConnect} onClick={hub.onConnect}>Life Hub 연결</button>
+          {deployedOnly}
+        </>
+      ) : hub.state === "B" ? (
+        <>
+          <p className="hub-status">
+            <span className="hub-status-dot" aria-hidden="true" />
+            {connectedLabel(hub)}
+          </p>
+          <div className="button-row">
+            <button className="text-button" disabled={hub.syncing} onClick={hub.onSync}>지금 동기화</button>
+            <button className="text-button" onClick={hub.onDisconnect}>연결 해제</button>
+          </div>
+          <label className="checkbox">
+            <input type="checkbox" checked={hub.autoApply} onChange={(e) => hub.onAutoApplyChange(e.target.checked)} />
+            Claude에서 승인한 기록은 바로 반영
+          </label>
+        </>
+      ) : (
+        <>
+          <p className="hub-status">
+            <span className="hub-status-dot warn" aria-hidden="true" />
+            확인 필요
+          </p>
+          <div className="hub-error hub-attention">
+            <p>Life Hub 연결이 끊겼습니다. 다시 연결해 주세요. 이 기기의 기록은 그대로입니다.</p>
+            <button className="primary" disabled={!hub.canConnect} onClick={hub.onConnect}>다시 연결</button>
+            {deployedOnly}
+          </div>
+          <button className="text-button" onClick={hub.onDisconnect}>연결 해제</button>
+        </>
+      )}
+      {hub.error && <p className="error" role="alert">{hub.error}</p>}
+    </div>
+  );
+}
 export default function Settings({
   archive,
   onClose,
@@ -15,6 +75,8 @@ export default function Settings({
   corruptRaw,
   primaryMode,
   onActivatePrimary,
+  hub,
+  focusSection,
 }: {
   archive: Archive;
   onClose: () => void;
@@ -22,6 +84,8 @@ export default function Settings({
   corruptRaw?: string;
   primaryMode: boolean;
   onActivatePrimary: () => Promise<boolean>;
+  hub: LifeHubSettings;
+  focusSection?: "lifehub";
 }) {
   const [name, setName] = useState(archive.user.display_name),
     [pending, setPending] = useState<Archive>(),
@@ -156,6 +220,7 @@ export default function Settings({
             이름 저장 <ArrowUpRight size={16} />
           </button>
         </form>
+        <LifeHubSection hub={hub} focus={focusSection === "lifehub"} />
         <div className="settings-section">
           <h3>내 기록 가져가기</h3>
           <p className="muted">

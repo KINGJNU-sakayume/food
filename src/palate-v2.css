@@ -162,10 +162,6 @@
 /* P3 local-only inbox: functional review layout (visual refinement deferred). */
 .hub-inbox h1 { font-size: clamp(28px, 3vw, 38px); margin: 8px 0 10px; }
 .hub-inbox .p2-muted { max-width: 790px; }
-.hub-connection { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 20px 0 6px; padding: 14px 16px; background: #efece3; max-width: 790px; }
-.hub-connection button { display: inline-flex; align-items: center; gap: 8px; }
-.hub-connection-state { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #394438; margin-right: auto; }
-.hub-connection small { flex-basis: 100%; font-size: 13px; color: #6a6f63; }
 .hub-inbox-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 22px 0 12px; }
 .hub-inbox-tools button { display: inline-flex; align-items: center; gap: 9px; }
 .hub-import { background: #efece3; padding: 16px; max-width: 740px; display: grid; gap: 11px; }
@@ -206,7 +202,15 @@
  .hub-import { padding: 12px; }
  .hub-candidate-item { padding: 12px; }
  .hub-inbox-tools button { width: 100%; justify-content: center; }
- .hub-connection { padding: 12px; }
- .hub-connection button { flex: 1 1 auto; justify-content: center; }
 }
-.hub-auto-apply { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: #394438; flex-basis: 100%; }
+/* Life Hub: header signals and the settings section (existing tokens only). */
+.header-actions .icon-button { position: relative; }
+.hub-alert-dot { position: absolute; top: 7px; right: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+.hub-count-badge { position: absolute; top: 3px; right: 1px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--green); color: var(--paper); font-size: 11px; font-weight: 700; line-height: 17px; text-align: center; }
+.hub-status { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 6px; }
+.hub-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex: none; }
+.hub-status-dot.warn { background: var(--red); }
+.hub-settings .checkbox { margin-top: 8px; }
+.hub-attention { flex-direction: column; align-items: flex-start; }
+.hub-attention p { margin: 0; }
+.hub-empty a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }

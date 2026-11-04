@@ -1,5 +1,5 @@
 import "./palate-v2.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   Plus,
@@ -30,8 +30,13 @@ import { Modal, dateLabel, Empty } from "./components/Common";
 import QuickAdd from "./components/QuickAdd";
 import Settings from "./components/Settings";
 import LifeHubInboxPage from "./pages/LifeHubInboxPage";
-import { browserDeps, isAuthCallback, isConnected } from "./lib/lifehub-remote";
-import { runLifeHubSync } from "./lib/lifehub-autosync";
+import {
+  autoApplyEnabled, beginConnect, browserDeps, completeConnect, connectAvailable, disconnect, isAuthCallback,
+  isConnected, LifeHubError, setAutoApply,
+} from "./lib/lifehub-remote";
+import { runLifeHubSync, type RoundTrip } from "./lib/lifehub-autosync";
+import { PALATE_APP_URL } from "./lib/lifehub-config";
+import { clearReconnectNeeded, hubState, markReconnectNeeded, pendingCount, reconnectNeeded } from "./lib/lifehub-status";
 import ChoosePage, { ReceiveShare } from "./pages/ChoosePage";
 import {
   Collection,
@@ -42,6 +47,9 @@ import {
 } from "./pages/ArchivePages";
 import { ArchiveV2, JournalV2, ChooseV2, PlaceV2, DishV2, MealV2 } from "./pages/PalateV2";
 import { activatePrimary, commitPrimary, primaryEnabled, PRIMARY_MODE_KEY, readPrimary, readPrimaryForRescue, restorePrimaryAsNewDatabase } from "./lib/storage-primary";
+
+// React StrictMode runs effects twice in development; the one-time code exchange must not.
+let callbackOnce: Promise<void> | null = null;
 
 function load() {
   let raw: string | undefined;
@@ -68,8 +76,9 @@ export default function App() {
     [storageReady, setStorageReady] = useState(!primaryEnabled()),
     [recovery, setRecovery] = useState(boot.error),
     [corruptRaw, setCorruptRaw] = useState(boot.raw),
-    // Returning from Life Hub sign-in lands on the app root with ?code&state: open the inbox to finish.
-    [route, setRoute] = useState(isAuthCallback(location.search) ? "#/inbox" : location.hash || "#/collection"),
+    // Returning from Life Hub sign-in lands on the app root with ?code&state: the App finishes it and
+    // opens the settings' Life Hub section (see the callback effect below).
+    [route, setRoute] = useState(location.hash || "#/collection"),
     [quick, setQuick] = useState<{
       record?: EatingRecord;
       menuId?: string;
@@ -77,6 +86,14 @@ export default function App() {
     }>(),
     [syncRevision, setSyncRevision] = useState(0),
     [settings, setSettings] = useState(false),
+    [settingsFocus, setSettingsFocus] = useState<"lifehub" | undefined>(),
+    [hubConnected, setHubConnected] = useState(() => isConnected(browserDeps())),
+    [hubReconnect, setHubReconnect] = useState(() => reconnectNeeded(localStorage)),
+    [hubSyncing, setHubSyncing] = useState(false),
+    [hubRetry, setHubRetry] = useState(false),
+    [hubError, setHubError] = useState(""),
+    [hubAutoApply, setHubAutoApply] = useState(() => autoApplyEnabled(browserDeps())),
+    [inboxRevision, setInboxRevision] = useState(0),
     [search, setSearch] = useState(false),
     [query, setQuery] = useState(""),
     [toast, setToast] = useState(""),
@@ -91,7 +108,8 @@ export default function App() {
     [rescueError, setRescueError] = useState("");
   const archiveRef = useRef(archive),
     broadcasts = useRef<BroadcastChannel | null>(null),
-    timer = useRef<ReturnType<typeof setTimeout>>();
+    timer = useRef<ReturnType<typeof setTimeout>>(),
+    hubRuns = useRef(0);
   const notify = (message: string) => {
     setToast(message);
     clearTimeout(timer.current);
@@ -249,18 +267,98 @@ export default function App() {
       return false;
     }
   }
+  // Life Hub sync, shared by the app start, the settings' 「지금 동기화」 and the inbox page. The round trip
+  // itself is the unchanged runLifeHubSync; this only tracks what the settings status line shows.
+  async function syncLifeHub(current: Archive, explicit: boolean): Promise<RoundTrip> {
+    hubRuns.current++;
+    setHubSyncing(true);
+    try {
+      // The inbox is stored per archive user: persist a brand-new archive's user ID before writing it.
+      if (explicit && !primaryEnabled() && !localStorage.getItem(STORAGE_KEY)) {
+        if (!await commit((a) => a, false))
+          throw new Error("후보함의 사용자 ID를 안전하게 저장하지 못했습니다.");
+      }
+      const result = await runLifeHubSync(current, (fn) => commit(fn, false), browserDeps());
+      setHubRetry(false);
+      setHubError("");
+      return result;
+    } catch (e) {
+      if (e instanceof LifeHubError && e.kind === "not_connected") {
+        // Life Hub refused the token (it is already removed): state C until the owner reconnects.
+        markReconnectNeeded(localStorage);
+        setHubReconnect(true);
+        setHubConnected(false);
+        setHubRetry(false);
+      } else if (e instanceof LifeHubError && (e.kind === "network" || e.kind === "server")) setHubRetry(true);
+      throw e;
+    } finally {
+      setInboxRevision((v) => v + 1);
+      if (--hubRuns.current === 0) setHubSyncing(false);
+    }
+  }
+  async function connectLifeHub() {
+    setHubError("");
+    try { location.assign(await beginConnect(browserDeps())); }
+    catch (e) { setHubError((e as Error).message); }
+  }
+  function disconnectLifeHub() {
+    if (!confirm("이 기기에서 Life Hub 연결을 해제할까요? 이미 가져온 후보와 기록은 그대로 남아요.")) return;
+    disconnect(browserDeps());
+    clearReconnectNeeded(localStorage);
+    setHubConnected(false);
+    setHubReconnect(false);
+    setHubRetry(false);
+    setHubError("");
+  }
+  function syncNow() {
+    void syncLifeHub(archiveRef.current, true).catch((e) => {
+      if (!(e instanceof LifeHubError) || e.kind === "denied" || e.kind === "state") setHubError((e as Error).message);
+    });
+  }
+  // Returning from Life Hub sign-in (?code&state): finish here, then show the settings' Life Hub section.
+  useEffect(() => {
+    if (!isAuthCallback(location.search)) return;
+    callbackOnce ??= completeConnect(location.search, browserDeps());
+    void callbackOnce.then(() => {
+      clearReconnectNeeded(localStorage);
+      setHubConnected(true);
+      setHubReconnect(false);
+      setHubError("");
+    }, (e) => setHubError((e as Error).message)).finally(() => {
+      history.replaceState(null, "", PALATE_APP_URL + (location.hash || "#/collection"));
+      setSettingsFocus("lifehub");
+      setSettings(true);
+    });
+  }, []);
+  useEffect(() => {
+    const refresh = () => {
+      setHubConnected(isConnected(browserDeps()));
+      setHubReconnect(reconnectNeeded(localStorage));
+      setHubAutoApply(autoApplyEnabled(browserDeps()));
+      setInboxRevision((v) => v + 1);
+    };
+    window.addEventListener("storage", refresh);
+    return () => window.removeEventListener("storage", refresh);
+  }, []);
   // Life Hub: when the app opens, save what the owner already approved in a Claude card (auto-apply,
-  // on by default) and send the receipts. The inbox page shares the same round trip.
+  // on by default) and send the receipts. Right after a sign-in this is the first sync.
   const autoSynced = useRef(false);
   useEffect(() => {
     if (!storageReady || recovery || autoSynced.current) return;
     autoSynced.current = true;
-    if (isAuthCallback(location.search) || !isConnected(browserDeps())) return;
-    if (!primaryEnabled() && !localStorage.getItem(STORAGE_KEY)) return;
-    void runLifeHubSync(archiveRef.current, (fn) => commit(fn, false), browserDeps())
-      .then((s) => { if (s.applied) notify(`Claude에서 승인한 기록 ${s.applied}개를 PALATE에 저장했어요.`); })
-      .catch(() => undefined);
+    void (async () => {
+      let justConnected = false;
+      if (callbackOnce) {
+        try { await callbackOnce; justConnected = true; } catch { return; }
+      }
+      if (!isConnected(browserDeps())) return;
+      if (!justConnected && !primaryEnabled() && !localStorage.getItem(STORAGE_KEY)) return;
+      const s = await syncLifeHub(archiveRef.current, justConnected);
+      if (s.applied) notify(`Claude에서 승인한 기록 ${s.applied}개를 PALATE에 저장했어요.`);
+    })().catch(() => undefined);
   }, [storageReady, recovery]);
+  const waiting = useMemo(() => pendingCount(archive), [archive, inboxRevision]);
+  const hub = hubState({ connected: hubConnected, needsReconnect: hubReconnect });
   const routeUrl = new URL(
     route.replace(/^#/, "") || "/collection",
     "https://palate.local",
@@ -336,7 +434,12 @@ export default function App() {
           })}
         </nav>
         <div className="header-actions">
-          <a href="#/inbox" className="icon-button" title="Life Hub 기록 후보함" aria-label="Life Hub 기록 후보함"><Inbox size={20}/></a>
+          {waiting > 0 && (
+            <a href="#/inbox" className="icon-button hub-inbox-link" title="Life Hub 기록 후보함" aria-label={`Life Hub 기록 후보함 (대기 ${waiting}건)`}>
+              <Inbox size={20} aria-hidden="true" />
+              <span className="hub-count-badge" aria-hidden="true">{waiting}</span>
+            </a>
+          )}
           <button
             className="icon-button"
             aria-label="전체 검색"
@@ -349,10 +452,11 @@ export default function App() {
           </button>
           <button
             className="icon-button settings-open"
-            aria-label="아카이브 설정과 백업"
+            aria-label={hub === "C" ? "아카이브 설정과 백업 (확인 필요)" : "아카이브 설정과 백업"}
             onClick={() => setSettings(true)}
           >
             <SettingsIcon size={20} />
+            {hub === "C" && <span className="hub-alert-dot" aria-hidden="true" />}
           </button>
           <button className="primary header-add" onClick={() => add()}>
             <Plus size={17} />
@@ -398,7 +502,13 @@ export default function App() {
         ) : page === "journal" ? (
           <JournalV2 archive={archive} onAdd={add} />
         ) : page === "inbox" ? (
-          <LifeHubInboxPage archive={archive} onSave={commit} />
+          <LifeHubInboxPage
+            archive={archive}
+            onSave={commit}
+            connected={hubConnected}
+            onSync={syncLifeHub}
+            onInboxChanged={() => setInboxRevision((v) => v + 1)}
+          />
         ) : page === "legacy-collection" ? (
           <Collection archive={archive} onAdd={add} onDemo={() => setDemoConfirm(true)} />
         ) : page === "legacy-journal" ? (
@@ -475,11 +585,28 @@ export default function App() {
       {settings && (
         <Settings
           archive={archive}
-          onClose={() => setSettings(false)}
+          onClose={() => { setSettings(false); setSettingsFocus(undefined); }}
           onSave={commit}
           corruptRaw={corruptRaw}
           primaryMode={primaryMode}
           onActivatePrimary={enablePrimary}
+          focusSection={settingsFocus}
+          hub={{
+            state: hub,
+            syncing: hubSyncing,
+            retry: hubRetry,
+            error: hubError,
+            canConnect: connectAvailable(location),
+            autoApply: hubAutoApply,
+            onConnect: () => { void connectLifeHub(); },
+            onSync: syncNow,
+            onDisconnect: disconnectLifeHub,
+            onAutoApplyChange: (on) => {
+              setAutoApply(browserDeps(), on);
+              setHubAutoApply(on);
+              if (on) syncNow();
+            },
+          }}
         />
       )}
       {search && (
