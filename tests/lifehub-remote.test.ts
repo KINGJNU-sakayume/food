@@ -105,7 +105,7 @@ test("connect builds an S256 PKCE request for the PALATE resource and exchanges 
   assert.equal(url.searchParams.get("client_id"), LIFEHUB_CLIENT_ID);
   assert.equal(url.searchParams.get("redirect_uri"), PALATE_APP_URL);
   assert.equal(url.searchParams.get("resource"), LIFEHUB_RESOURCE);
-  assert.equal(url.searchParams.get("scope"), "food:inbox");
+  assert.equal(url.searchParams.get("scope"), "food:inbox food:board");
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
   assert.equal(isConnected(deps), false);
 
