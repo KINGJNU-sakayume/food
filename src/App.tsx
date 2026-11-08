@@ -36,6 +36,9 @@ import {
 } from "./lib/lifehub-remote";
 import { runLifeHubSync, type RoundTrip } from "./lib/lifehub-autosync";
 import { PALATE_APP_URL } from "./lib/lifehub-config";
+import {
+  boardLastUploadAt, boardNeedsReconnect, boardUploadEnabled, clearBoardReconnect, runBoardUpload, setBoardUploadEnabled,
+} from "./lib/board-upload";
 import { clearReconnectNeeded, hubState, markReconnectNeeded, pendingCount, reconnectNeeded } from "./lib/lifehub-status";
 import ChoosePage, { ReceiveShare } from "./pages/ChoosePage";
 import {
@@ -93,6 +96,9 @@ export default function App() {
     [hubRetry, setHubRetry] = useState(false),
     [hubError, setHubError] = useState(""),
     [hubAutoApply, setHubAutoApply] = useState(() => autoApplyEnabled(browserDeps())),
+    [boardOn, setBoardOn] = useState(() => boardUploadEnabled(localStorage)),
+    [boardReconnect, setBoardReconnect] = useState(() => boardNeedsReconnect(localStorage)),
+    [boardAt, setBoardAt] = useState<number | undefined>(() => boardLastUploadAt(localStorage)),
     [inboxRevision, setInboxRevision] = useState(0),
     [search, setSearch] = useState(false),
     [query, setQuery] = useState(""),
@@ -296,6 +302,39 @@ export default function App() {
       if (--hubRuns.current === 0) setHubSyncing(false);
     }
   }
+  // Board tiles → Life Hub. Never blocks the app: every failure is swallowed here (see lib/board-upload).
+  const boardBusy = useRef(false);
+  const boardAgain = useRef(false);
+  const boardStarted = useRef(false);
+  const boardTimer = useRef<number | undefined>(undefined);
+  async function uploadBoard(current: Archive, startup: boolean): Promise<void> {
+    window.clearTimeout(boardTimer.current);
+    if (boardBusy.current) { boardAgain.current = true; return; }
+    boardBusy.current = true;
+    try {
+      const outcome = await runBoardUpload(current, browserDeps(), { startup });
+      if (outcome.kind === "throttled")
+        boardTimer.current = window.setTimeout(() => { void uploadBoard(archiveRef.current, false); }, outcome.waitMs + 1000);
+    } catch (e) {
+      if (e instanceof LifeHubError && e.kind === "not_connected") {
+        markReconnectNeeded(localStorage);
+        setHubReconnect(true);
+        setHubConnected(false);
+      }
+    } finally {
+      boardBusy.current = false;
+      setBoardReconnect(boardNeedsReconnect(localStorage));
+      setBoardAt(boardLastUploadAt(localStorage));
+      if (boardAgain.current) { boardAgain.current = false; void uploadBoard(archiveRef.current, false); }
+    }
+  }
+  useEffect(() => {
+    if (!storageReady || recovery) return;
+    const startup = !boardStarted.current;
+    boardStarted.current = true;
+    void uploadBoard(archive, startup).catch(() => undefined);
+    return () => window.clearTimeout(boardTimer.current);
+  }, [archive, storageReady, recovery, boardOn, hubConnected]);
   async function connectLifeHub() {
     setHubError("");
     try { location.assign(await beginConnect(browserDeps())); }
@@ -321,6 +360,8 @@ export default function App() {
     callbackOnce ??= completeConnect(location.search, browserDeps());
     void callbackOnce.then(() => {
       clearReconnectNeeded(localStorage);
+      clearBoardReconnect(localStorage);
+      setBoardReconnect(false);
       setHubConnected(true);
       setHubReconnect(false);
       setHubError("");
@@ -598,6 +639,10 @@ export default function App() {
             error: hubError,
             canConnect: connectAvailable(location),
             autoApply: hubAutoApply,
+            boardOn,
+            boardReconnect,
+            boardAt,
+            onBoardChange: (on) => { setBoardUploadEnabled(localStorage, on); setBoardOn(on); },
             onConnect: () => { void connectLifeHub(); },
             onSync: syncNow,
             onDisconnect: disconnectLifeHub,

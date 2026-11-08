@@ -7,4 +7,5 @@ export const LIFEHUB_ORIGIN = "https://life-hub-api.213303.workers.dev";
 export const PALATE_APP_URL = "https://kingjnu-sakayume.github.io/food/";
 export const LIFEHUB_CLIENT_ID = PALATE_APP_URL + "lifehub-client.json";
 export const LIFEHUB_RESOURCE = LIFEHUB_ORIGIN + "/palate";
-export const LIFEHUB_SCOPE = "food:inbox";
+/** `food:board` lets this app upload its board tiles; connections made before it need one reconnect. */
+export const LIFEHUB_SCOPE = "food:inbox food:board";

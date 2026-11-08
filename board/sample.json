@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "app": "food",
+  "generated_at": "2026-11-08T03:00:00.000Z",
+  "tiles": [
+    {
+      "id": "recent",
+      "name": "PALATE · 최근 먹은 것",
+      "tone": "strip",
+      "sizes": [
+        "2x1",
+        "4x1"
+      ],
+      "size": "2x1",
+      "default": true,
+      "href": "https://kingjnu-sakayume.github.io/food/",
+      "data": {
+        "label": "PALATE",
+        "square": true,
+        "items": [
+          {
+            "title": "가상 김치찌개",
+            "cover": {
+              "mono": "가"
+            }
+          },
+          {
+            "title": "가상 마라탕",
+            "cover": {
+              "mono": "가"
+            }
+          },
+          {
+            "title": "가상 크루아상",
+            "cover": {
+              "mono": "가"
+            }
+          },
+          {
+            "title": "가상 아메리카노",
+            "cover": {
+              "mono": "가"
+            }
+          },
+          {
+            "title": "가상 순두부",
+            "cover": {
+              "mono": "가"
+            }
+          },
+          {
+            "title": "가상 피자",
+            "cover": {
+              "mono": "가"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "last",
+      "name": "PALATE · 마지막 식사",
+      "tone": "type",
+      "form": "line",
+      "sizes": [
+        "2x1",
+        "4x1"
+      ],
+      "size": "2x1",
+      "default": false,
+      "href": "https://kingjnu-sakayume.github.io/food/",
+      "data": {
+        "label": "마지막 식사",
+        "title": "가상 김치찌개 · 가상 식당",
+        "sub": "11/7 · 국물이 깊었다",
+        "pill": "호"
+      }
+    },
+    {
+      "id": "again",
+      "name": "PALATE · 다시 먹을 것",
+      "tone": "type",
+      "form": "list",
+      "sizes": [
+        "2x1",
+        "2x2"
+      ],
+      "size": "2x2",
+      "default": false,
+      "href": "https://kingjnu-sakayume.github.io/food/",
+      "data": {
+        "label": "다시 먹을 것",
+        "rows": [
+          {
+            "title": "가상 김치찌개",
+            "value": "11/7"
+          },
+          {
+            "title": "가상 크루아상",
+            "value": "11/3"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wish",
+      "name": "PALATE · 먹고 싶은 것",
+      "tone": "type",
+      "form": "list",
+      "sizes": [
+        "2x1",
+        "2x2"
+      ],
+      "size": "2x2",
+      "default": false,
+      "href": "https://kingjnu-sakayume.github.io/food/",
+      "data": {
+        "label": "먹고 싶은 것",
+        "rows": [
+          {
+            "title": "가상 피자",
+            "value": "11/7"
+          },
+          {
+            "title": "가상 식당",
+            "value": "11/2"
+          },
+          {
+            "title": "가상 브랜드",
+            "value": "10/25"
+          }
+        ]
+      }
+    }
+  ]
+}

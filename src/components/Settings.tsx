@@ -16,6 +16,11 @@ export interface LifeHubSettings {
   error: string;
   canConnect: boolean;
   autoApply: boolean;
+  /** 「이 기기에서 보드에 올리기」 (per device, off by default). */
+  boardOn: boolean;
+  boardReconnect: boolean;
+  boardAt?: number;
+  onBoardChange: (on: boolean) => void;
   onConnect: () => void;
   onSync: () => void;
   onDisconnect: () => void;
@@ -49,6 +54,20 @@ function LifeHubSection({ hub, focus }: { hub: LifeHubSettings; focus: boolean }
             <input type="checkbox" checked={hub.autoApply} onChange={(e) => hub.onAutoApplyChange(e.target.checked)} />
             Claude에서 승인한 기록은 바로 반영
           </label>
+          <label className="checkbox">
+            <input type="checkbox" checked={hub.boardOn} onChange={(e) => hub.onBoardChange(e.target.checked)} />
+            이 기기에서 보드에 올리기
+          </label>
+          <p className="micro">
+            최근 식사·위시 목록만 Life Board용으로 올려요(기록 자체는 올리지 않아요). 한 기기에서만 켜 두세요.
+            {hub.boardOn && hub.boardAt !== undefined && ` 마지막 업로드 ${new Date(hub.boardAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}
+          </p>
+          {hub.boardOn && hub.boardReconnect && (
+            <div className="hub-error hub-attention">
+              <p>보드에 올리려면 Life Hub에 다시 연결해 주세요. 지금 연결은 그대로 쓸 수 있어요.</p>
+              <button className="primary" disabled={!hub.canConnect} onClick={hub.onConnect}>다시 연결</button>
+            </div>
+          )}
         </>
       ) : (
         <>

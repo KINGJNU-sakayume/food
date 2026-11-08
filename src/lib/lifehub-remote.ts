@@ -46,7 +46,7 @@ export class LifeHubError extends Error {
   constructor(kind: LifeHubErrorKind, message: string) { super(message); this.kind = kind; }
 }
 
-const TOKENS_KEY = "palate.lifehub.remote.v1";
+export const TOKENS_KEY = "palate.lifehub.remote.v1";
 const PENDING_AUTH_KEY = "palate.lifehub.pending-auth.v1";
 const remoteKeysKey = (userId: string) => "palate.lifehub.remote-keys.v1." + userId;
 const outcomesKey = (userId: string) => "palate.lifehub.remote-outcomes.v1." + userId;
@@ -62,7 +62,7 @@ const b64url = (bytes: Uint8Array) => {
   for (const b of bytes) s += String.fromCharCode(b);
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 };
-function readJson<T>(store: KV, key: string): T | null {
+export function readJson<T>(store: KV, key: string): T | null {
   try { const raw = store.getItem(key); return raw ? JSON.parse(raw) as T : null; } catch { return null; }
 }
 
@@ -142,7 +142,7 @@ export async function completeConnect(search: string, deps: RemoteDeps): Promise
   });
 }
 
-async function accessToken(deps: RemoteDeps, forceRefresh = false): Promise<string> {
+export async function accessToken(deps: RemoteDeps, forceRefresh = false): Promise<string> {
   const tokens = readJson<Tokens>(deps.storage, TOKENS_KEY);
   if (!tokens?.refresh_token) throw new LifeHubError("not_connected", "Life Hub에 연결되어 있지 않아요.");
   if (!forceRefresh && tokens.access_expires_at - 60_000 > deps.now()) return tokens.access_token;

@@ -5,7 +5,7 @@
 PALATE는 Life Hub의 OAuth 공개 클라이언트로 연결된다. 클라이언트 비밀은 없고, `public/lifehub-client.json`(Client ID Metadata Document)으로 자신을 식별한다.
 
 1. 후보함의 **Life Hub 연결** → Life Hub 소유자 비밀번호 화면 → PALATE로 돌아옴 (PKCE S256, `state`·`iss` 검증)
-2. PALATE가 받는 토큰은 `food:inbox` 권한, `/palate` 리소스 전용이다. Claude 커넥터 토큰과 서로 쓸 수 없다.
+2. PALATE가 받는 토큰은 `food:inbox` 권한(보드 타일 업로드용 `food:board` 포함, README 「보드 타일」), `/palate` 리소스 전용이다. Claude 커넥터 토큰과 서로 쓸 수 없다.
 3. 후보함을 열면 Life Hub의 대기 후보를 가져와 기존 계약 검증(`validateCandidate`)을 통과한 것만 로컬 후보함에 넣는다. **Archive.records는 바뀌지 않는다.**
 4. 승인하면 기존처럼 기록과 `lifehub_receipts` 영수증이 한 번에 저장된 뒤, 영수증을 Life Hub로 보낸다(`POST /palate/v1/receipts`). 거절은 `POST /palate/v1/rejections`.
 5. 전송 실패 시 아웃박스로 남아 다음 동기화 때 다시 보낸다. Life Hub와 상태가 다르면(409) 재시도를 멈추고 표시만 하며, **PALATE의 기록은 그대로 유지**한다.
