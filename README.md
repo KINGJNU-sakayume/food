@@ -92,5 +92,8 @@ npm run test:e2e # CRUD, 사진, 모바일, 백업, 저장 실패, 오프라인
 - [UI와 UX](docs/UI_UX.md)
 - [기술 구조](docs/ARCHITECTURE.md)
 - [다음 단계](docs/ROADMAP.md)
+- [먹기 전에 고르기](docs/DISCOVERY.md)
+- [음식점 검색·메뉴 조회 서비스](docs/RESTAURANT_SERVICE.md) — `server/`의 Cloudflare Worker(`palate-restaurants`)와 메뉴 파서
+- Life Hub 연결: [후보함(P2b)](docs/LIFEHUB_LOCAL_INBOX.md) · [후보 프로토콜 v1](docs/LIFEHUB_PALATE_PROTOCOL.md) · [저장·연결 설계](docs/P2_STORAGE_LIFEHUB_PLAN.md) · [복구·안전 검증 안내](docs/P2B_RECOVERY_RUNBOOK.md)
 
 예시 사진: [burger](https://images.unsplash.com/photo-1568901346375-23c9450c58cd), [coffee](https://images.unsplash.com/photo-1541167760496-1628856ab772), [pizza](https://images.unsplash.com/photo-1574071318508-1cdbab80d002) / Unsplash. 이미지 파일을 앱에 포함하므로 실행 중 외부 사진 서비스에 접속하지 않습니다.
