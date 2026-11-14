@@ -46,7 +46,7 @@ npm run test:e2e # CRUD, 사진, 모바일, 백업, 저장 실패, 오프라인
 
 - [전체 사용 흐름과 데이터 보존](docs/DISCOVERY.md)
 - [아이폰 공유 단축어 설정](docs/IPHONE_SHORTCUT.md)
-- [외부 음식점·메뉴 조회 서비스 연결](docs/RESTAURANT_SERVICE.md)
+- [외부 음식점·메뉴 조회 서비스 연결](docs/RESTAURANT_SERVICE.md) — `server/`의 Cloudflare Worker(`palate-restaurants`)와 메뉴 파서
 
 기본 음식점 이름 검색은 Photon의 OpenStreetMap 기반 공개 검색이며 결과 범위가 네이버·배민과 같지는 않습니다. **개별 음식점 메뉴 자동 조회는 선택적 조회 서버를 배포·연결해야 합니다.** 서버 코드와 테스트는 포함되어 있지만 연결되지 않은 상태에서 메뉴를 제공하는 것처럼 표시하지 않습니다. 모든 음식점의 전체 메뉴를 보장하지 않으며 기존 수동 추가도 사용할 수 있습니다.
 
@@ -93,7 +93,6 @@ npm run test:e2e # CRUD, 사진, 모바일, 백업, 저장 실패, 오프라인
 - [기술 구조](docs/ARCHITECTURE.md)
 - [다음 단계](docs/ROADMAP.md)
 - [먹기 전에 고르기](docs/DISCOVERY.md)
-- [음식점 검색·메뉴 조회 서비스](docs/RESTAURANT_SERVICE.md) — `server/`의 Cloudflare Worker(`palate-restaurants`)와 메뉴 파서
 - Life Hub 연결: [후보함(P2b)](docs/LIFEHUB_LOCAL_INBOX.md) · [후보 프로토콜 v1](docs/LIFEHUB_PALATE_PROTOCOL.md) · [저장·연결 설계](docs/P2_STORAGE_LIFEHUB_PLAN.md) · [복구·안전 검증 안내](docs/P2B_RECOVERY_RUNBOOK.md)
 
 예시 사진: [burger](https://images.unsplash.com/photo-1568901346375-23c9450c58cd), [coffee](https://images.unsplash.com/photo-1541167760496-1628856ab772), [pizza](https://images.unsplash.com/photo-1574071318508-1cdbab80d002) / Unsplash. 이미지 파일을 앱에 포함하므로 실행 중 외부 사진 서비스에 접속하지 않습니다.
